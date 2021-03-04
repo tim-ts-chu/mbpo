@@ -1,12 +1,13 @@
 import io
 import math
+import torch
 import numpy as np
 import cv2
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import pdb
-
+from mbpo.utils.plotter import Plotter
 
 def plot_trajectories(writer, label, epoch, env_traj, model_traj, means, stds):
     state_dim = env_traj[0].size
@@ -131,5 +132,36 @@ def visualize_policy(real_env, fake_env, policy, writer, timestep, max_steps=100
     rewards_observations_r = np.concatenate((rewards_r, terminals_r, np.array(observations_r)), -1)
     rewards_observations_f = np.concatenate((rewards_f, terminals_f, np.array(observations_f)), -1)
     plot_trajectories(writer, label, timestep, rewards_observations_r, rewards_observations_f, means_f, stds_f)
-    record_trajectories(writer, label, epoch, images_r)
+    #record_trajectories(writer, label, epoch, images_r)
+
+def visualize_model_perf(real_env, fake_env, policy, writer, timestep, max_steps=1000, focus=None, label='model_perf', img_dim=128):
+    init_obs = real_env.reset()
+    obs = init_obs.copy() #(17, ) for walker
+
+    plotter = Plotter(obs.shape[0])
+
+    step = 0
+    while step < max_steps:
+        act = policy.actions_np(obs[None])[0]
+
+        next_obs_r, rew_r, term_r, info_r = real_env.step(act)
+        next_obs_f, rew_f, term_f, info_f = fake_env.step(obs, act)
+
+        plotter.add_next_state_dp(0, 
+                torch.from_numpy(next_obs_r).view(1, -1).float(),
+                torch.from_numpy(next_obs_f).view(1, -1).float())
+        plotter.add_reward_dp(0,
+                torch.tensor(rew_r).view(1, -1).float(),
+                torch.tensor(rew_f).view(1, -1).float())
+
+        if term_r:
+            init_obs = real_env.reset()
+            obs = init_obs.copy()
+        else:
+            obs = next_obs_r
+
+        step += 1
+
+    # plotter.dump_plots('/home/timchu/mbpo-torch', [0])
+    plotter.dump_plots(None, [0], writer, label, timestep)
 
