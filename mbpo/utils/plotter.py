@@ -74,7 +74,7 @@ class Plotter:
                                 self._state_pred[n_steps][:, dim])
             fig.patch.set_facecolor('white')
             if writer is None:
-                plt.savefig(os.path.join(folder_path + "/{}_step_validation.png".format(n_steps)))
+                plt.savefig(os.path.join(folder_path + "/{}_step_validation.png".format(step)))
             else:
                 buf = io.BytesIO()
                 plt.savefig(buf, format='png', layout = 'tight')
@@ -101,7 +101,7 @@ class Plotter:
         ax.plot(gt[sorted_indices].detach().cpu().numpy(), 'bo', markersize=0.3, label='Ground Truth')
         ax.legend(loc='upper left')
         errors = pred - gt
-        ax.text(0.65, 0.20, 'MSE: {:.2e}'.format(errors.square().mean()), transform=ax.transAxes)
+        ax.text(0.65, 0.20, 'MSE: {:.2e}'.format((errors**2).mean()), transform=ax.transAxes)
         ax.text(0.65, 0.15, 'MSE STD: {:.2e}'.format(errors.std()), transform=ax.transAxes)
         ax.set_xlabel('Samples Sorted by Ground Truth Value')
         ax.set_ylabel('Values')

@@ -3,6 +3,7 @@ from __future__ import print_function
 from __future__ import absolute_import
 
 import os
+import sys
 import time
 import pdb
 import itertools
@@ -188,11 +189,17 @@ class BNN:
                                                 shape=[self.num_nets, None, self.layers[-1].get_output_dim() // 2],
                                                 name="training_targets")
             train_loss = tf.reduce_sum(self._compile_losses(self.sy_train_in, self.sy_train_targ, inc_var_loss=True))
-            train_loss += tf.add_n(self.decays)
-            train_loss += 0.01 * tf.reduce_sum(self.max_logvar) - 0.01 * tf.reduce_sum(self.min_logvar)
+
+            reg_loss = tf.add_n(self.decays)
+            var_loss = 0.01 * tf.reduce_sum(self.max_logvar) - 0.01 * tf.reduce_sum(self.min_logvar)
+
+            total_loss = train_loss + reg_loss + var_loss
             self.mse_loss = self._compile_losses(self.sy_train_in, self.sy_train_targ, inc_var_loss=False)
 
-            self.train_op = self.optimizer.minimize(train_loss, var_list=self.optvars)
+            # print_op = tf.print("***** train:", train_loss, "var:", var_loss, "reg:", reg_loss, "self.mse:", self.mse_loss)
+            # with tf.control_dependencies([print_op]):
+                # self.train_op = self.optimizer.minimize(total_loss, var_list=self.optvars)
+            self.train_op = self.optimizer.minimize(total_loss, var_list=self.optvars)
 
         # Initialize all variables
         self.sess.run(tf.variables_initializer(self.optvars + self.nonoptvars + self.optimizer.variables()))

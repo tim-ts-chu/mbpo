@@ -24,6 +24,9 @@ from mbpo.utils.logging import Progress
 import mbpo.utils.filesystem as filesystem
 
 
+from mbpo.models.torch_model import construct_torch_model
+
+
 def td_target(reward, discount, next_value):
     return reward + discount * next_value
 
@@ -98,6 +101,7 @@ class MBPO(RLAlgorithm):
         obs_dim = np.prod(training_environment.observation_space.shape)
         act_dim = np.prod(training_environment.action_space.shape)
         self._model = construct_model(obs_dim=obs_dim, act_dim=act_dim, hidden_dim=hidden_dim, num_networks=num_networks, num_elites=num_elites)
+        # self._model = construct_torch_model(obs_dim=obs_dim, act_dim=act_dim, hidden_dim=hidden_dim, num_networks=num_networks, num_elites=num_elites)
         self._static_fns = static_fns
         self.fake_env = FakeEnv(self._model, self._static_fns)
 
@@ -415,7 +419,7 @@ class MBPO(RLAlgorithm):
         qpos = state[:qpos_dim]
         qvel = state[qpos_dim:]
 
-        print('[ Visualization ] Starting | Epoch {} | Log dir: {}\n'.format(self._epoch, self._log_dir))
+        print('[ Visualization ] Starting | Epoch {} | Timestep {} | Log dir: {}\n'.format(self._epoch, timestep, self._log_dir))
         visualize_policy(env, self.fake_env, self._policy, self._writer, timestep)
         visualize_model_perf(env, self.fake_env, self._policy, self._writer, timestep)
         print('[ Visualization ] Done')
