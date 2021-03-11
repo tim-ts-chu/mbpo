@@ -23,9 +23,8 @@ from mbpo.utils.visualization import visualize_policy, visualize_model_perf
 from mbpo.utils.logging import Progress
 import mbpo.utils.filesystem as filesystem
 
-
 from mbpo.models.torch_model import construct_torch_model
-
+from mbpo.models.torch_disc import construct_torch_disc
 
 def td_target(reward, discount, next_value):
     return reward + discount * next_value
@@ -100,8 +99,9 @@ class MBPO(RLAlgorithm):
 
         obs_dim = np.prod(training_environment.observation_space.shape)
         act_dim = np.prod(training_environment.action_space.shape)
-        self._model = construct_model(obs_dim=obs_dim, act_dim=act_dim, hidden_dim=hidden_dim, num_networks=num_networks, num_elites=num_elites)
-        # self._model = construct_torch_model(obs_dim=obs_dim, act_dim=act_dim, hidden_dim=hidden_dim, num_networks=num_networks, num_elites=num_elites)
+        # self._model = construct_model(obs_dim=obs_dim, act_dim=act_dim, hidden_dim=hidden_dim, num_networks=num_networks, num_elites=num_elites)
+        self._model = construct_torch_model(obs_dim=obs_dim, act_dim=act_dim, hidden_dim=hidden_dim, num_networks=num_networks, num_elites=num_elites)
+        self._disc = construct_torch_disc(obs_dim=obs_dim, act_dim=act_dim, hidden_dim=hidden_dim, num_networks=num_networks, num_elites=num_elites)
         self._static_fns = static_fns
         self.fake_env = FakeEnv(self._model, self._static_fns)
 
@@ -225,19 +225,24 @@ class MBPO(RLAlgorithm):
                         self._epoch, self._model_train_freq, self._timestep, self._total_timestep, self._train_steps_this_epoch, self._num_train_steps)
                     )
 
+                    # train disc
+                    if hasattr(self, '_model_pool'):
+                        disc_train_metrics = self._train_disc(disc_batch_size=256)
+                        model_metrics.update(disc_train_metrics)
+
                     model_train_metrics = self._train_model(batch_size=256, max_epochs=None, holdout_ratio=0.2, max_t=self._max_model_t)
                     model_metrics.update(model_train_metrics)
                     gt.stamp('epoch_train_model')
-                    
+
                     self._set_rollout_length()
                     self._reallocate_model_pool()
                     model_rollout_metrics = self._rollout_model(rollout_batch_size=self._rollout_batch_size, deterministic=self._deterministic)
                     model_metrics.update(model_rollout_metrics)
-                    
 
                     gt.stamp('epoch_rollout_model')
                     self._visualize_model(self._evaluation_environment, self._total_timestep)
                     self._training_progress.resume()
+
 
                 self._do_sampling(timestep=self._total_timestep)
                 gt.stamp('sample')
@@ -376,6 +381,23 @@ class MBPO(RLAlgorithm):
             assert self._model_pool.size == new_pool.size
             self._model_pool = new_pool
 
+    def _train_disc(self, **kwargs):
+        num_env_samples = self._pool.size
+        num_model_samples = self._model_pool.size
+        num_samples = min(num_env_samples, num_model_samples)
+        env_batch = self._pool.random_batch(num_samples)
+        model_batch = self._model_pool.random_batch(num_samples)
+
+        keys = env_batch.keys()
+        train_batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
+
+        train_inputs = np.concatenate([train_batch['observations'], train_batch['next_observations'], train_batch['rewards']], axis=1)
+        # train_inputs = train_batch['next_observations']
+        train_outputs = np.concatenate((np.ones(num_samples, dtype=np.float32), np.zeros(num_samples, dtype=np.float32)), axis=0)
+
+        disc_train_metrics = self._disc.train(train_inputs, train_outputs, **kwargs)
+        return disc_train_metrics
+
     def _train_model(self, **kwargs):
         env_samples = self._pool.return_all_samples()
         train_inputs, train_outputs = format_samples_for_training(env_samples)
@@ -391,7 +413,7 @@ class MBPO(RLAlgorithm):
         steps_added = []
         for i in range(self._rollout_length):
             act = self._policy.actions_np(obs)
-            
+
             next_obs, rew, term, info = self.fake_env.step(obs, act, **kwargs)
             steps_added.append(len(obs))
 
@@ -420,7 +442,7 @@ class MBPO(RLAlgorithm):
         qvel = state[qpos_dim:]
 
         print('[ Visualization ] Starting | Epoch {} | Timestep {} | Log dir: {}\n'.format(self._epoch, timestep, self._log_dir))
-        visualize_policy(env, self.fake_env, self._policy, self._writer, timestep)
+        visualize_policy(env, self.fake_env, self._policy, self._disc, self._writer, timestep)
         visualize_model_perf(env, self.fake_env, self._policy, self._writer, timestep)
         print('[ Visualization ] Done')
         ## set env state

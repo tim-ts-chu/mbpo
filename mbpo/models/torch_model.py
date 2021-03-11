@@ -77,7 +77,7 @@ class WorldModel:
         self.num_elites = num_elites
         self._output_dim = output_dim
         self._model = {}
-        self._scaler = TensorStandardScaler(self._output_dim, self._device_id)
+        self._scaler = TensorStandardScaler(input_dim, self._device_id)
         
         parameters = []
         for i in range(num_networks):
@@ -345,10 +345,9 @@ class WorldModel:
         self._end_train(holdout_losses)
         if timer: timer.stamp('bnn_end')
 
-        # val_loss = (np.sort(holdout_losses)[:self.num_elites]).mean()
-        val_loss = holdout_losses
-        model_metrics = {'val_loss': val_loss}
-        print('[ BNN ] Holdout', np.sort(holdout_losses), model_metrics)
+        val_loss = (np.sort(holdout_losses)[:self.num_elites]).mean()
+        model_metrics = {'val_lossh': val_loss}
+        print('[ BNN ] Holdout (Torch)', np.sort(holdout_losses), model_metrics)
         return OrderedDict(model_metrics)
 
 

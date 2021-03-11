@@ -9,7 +9,7 @@ import matplotlib.pyplot as plt
 import pdb
 from mbpo.utils.plotter import Plotter
 
-def plot_trajectories(writer, label, epoch, env_traj, model_traj, means, stds):
+def plot_trajectories(writer, label, epoch, env_traj, model_traj, means, stds, conf_r, conf_f):
     state_dim = env_traj[0].size
     model_states = [[obs[s] for obs in model_traj] for s in range(state_dim)]
     env_states   = [[obs[s] for obs in env_traj  ] for s in range(state_dim)]
@@ -18,7 +18,8 @@ def plot_trajectories(writer, label, epoch, env_traj, model_traj, means, stds):
     stds = [np.array([std[s] for std in stds]) for s in range(state_dim)]
 
     cols = 1
-    rows = math.ceil(state_dim / cols)
+    # rows = math.ceil(state_dim / cols)
+    rows = math.ceil(state_dim + 1 / cols)
 
     plt.clf()
     fig, axes = plt.subplots(rows, cols, figsize = (9*cols, 3*rows))
@@ -39,6 +40,13 @@ def plot_trajectories(writer, label, epoch, env_traj, model_traj, means, stds):
             ax.set_title('terminal')
         else:
             ax.set_title('state dim {}'.format(i-2))
+
+    # Plot conf score
+    ax = axes[-1]
+    ax.plot(conf_r, color='k', marker='x')
+    ax.plot(conf_f, color='b', marker='x')
+    ax.set_title('confidence score')
+
     plt.tight_layout()
 
     buf = io.BytesIO()
@@ -82,7 +90,7 @@ def record_trajectories(writer, label, epoch, env_images, model_images=None):
     writer.add_video('video_' + label, images, epoch, fps = fps)
 
 
-def visualize_policy(real_env, fake_env, policy, writer, timestep, max_steps=100, focus=None, label='model_vis', img_dim=128):
+def visualize_policy(real_env, fake_env, policy, disc, writer, timestep, max_steps=100, focus=None, label='model_vis', img_dim=128):
     init_obs = real_env.reset()
     obs = init_obs.copy()
 
@@ -95,6 +103,8 @@ def visualize_policy(real_env, fake_env, policy, writer, timestep, max_steps=100
     means_f = [np.concatenate((np.zeros(2), obs))]
     stds_f = [np.concatenate((np.zeros(2), obs*0))]
     actions = []
+    conf_r = []
+    conf_f = []
 
     i = 0
     term_r, term_f = False, False
@@ -107,6 +117,10 @@ def visualize_policy(real_env, fake_env, policy, writer, timestep, max_steps=100
             rewards_r.append(rew_r)
             terminals_r.append(term_r)
 
+            # add discriminator score
+            score = disc.predict(np.concatenate([obs, next_obs_r, [rew_r]]))
+            conf_r.append(score)
+
         if not term_f:
             next_obs_f, rew_f, term_f, info_f = fake_env.step(obs, act)
             observations_f.append(next_obs_f)
@@ -114,6 +128,10 @@ def visualize_policy(real_env, fake_env, policy, writer, timestep, max_steps=100
             terminals_f.append(term_f)
             means_f.append(info_f['mean'])
             stds_f.append(info_f['std'])
+
+            # add discriminator score
+            score = disc.predict(np.concatenate([obs, next_obs_f, rew_f]))
+            conf_f.append(score)
         
         actions.append(act)
 
@@ -131,7 +149,7 @@ def visualize_policy(real_env, fake_env, policy, writer, timestep, max_steps=100
 
     rewards_observations_r = np.concatenate((rewards_r, terminals_r, np.array(observations_r)), -1)
     rewards_observations_f = np.concatenate((rewards_f, terminals_f, np.array(observations_f)), -1)
-    plot_trajectories(writer, label, timestep, rewards_observations_r, rewards_observations_f, means_f, stds_f)
+    plot_trajectories(writer, label, timestep, rewards_observations_r, rewards_observations_f, means_f, stds_f, conf_r, conf_f)
     #record_trajectories(writer, label, epoch, images_r)
 
 def visualize_model_perf(real_env, fake_env, policy, writer, timestep, max_steps=1000, focus=None, label='model_perf', img_dim=128):
