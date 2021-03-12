@@ -156,10 +156,10 @@ class WorldModel:
 
             # gan loss
             logits = disc.predict(
-                    torch.cat((inputs[i,:,:self._obs_dim], mean), dim=1),
+                    torch.cat((inputs[i,:,:], mean), dim=1),
                     ret_logits=True)
             batch_size = inputs.shape[1] # input dim is (ensemble_size, batch_size, obs_dim + act_dim)
-            labels = torch.ones(batch_size, device=self._device_id) *  # non-soft-label
+            labels = torch.ones(batch_size, device=self._device_id) # non-soft-label
             gan_loss = 1 * F.binary_cross_entropy_with_logits(logits.flatten(), labels)
 
             total_loss = train_loss + var_loss + reg_loss + gan_loss

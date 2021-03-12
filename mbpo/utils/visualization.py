@@ -118,7 +118,7 @@ def visualize_policy(real_env, fake_env, policy, disc, writer, timestep, max_ste
             terminals_r.append(term_r)
 
             # add discriminator score
-            score = disc.predict(np.concatenate([obs_r, [rew_r], next_obs_r - obs_r]))
+            score = disc.predict(np.concatenate([obs_r, act, [rew_r], next_obs_r - obs_r]))
             conf_r.append(score)
             obs_r = next_obs_r
 
@@ -131,7 +131,7 @@ def visualize_policy(real_env, fake_env, policy, disc, writer, timestep, max_ste
             stds_f.append(info_f['std'])
 
             # add discriminator score
-            score = disc.predict(np.concatenate([obs_f, rew_f, next_obs_f - obs_f]))
+            score = disc.predict(np.concatenate([obs_f, act, rew_f, next_obs_f - obs_f]))
             conf_f.append(score)
             obs_f = next_obs_f
         

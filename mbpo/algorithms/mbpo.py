@@ -393,6 +393,7 @@ class MBPO(RLAlgorithm):
 
         train_inputs = np.concatenate([
             train_batch['observations'],
+            train_batch['actions'],
             train_batch['rewards'],
             train_batch['next_observations'] - train_batch['observations'],
             ], axis=1)

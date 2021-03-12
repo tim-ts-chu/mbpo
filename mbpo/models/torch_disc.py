@@ -7,7 +7,7 @@ from mbpo.utils.logging import Progress, Silent
 
 def construct_torch_disc(obs_dim=11, act_dim=3, rew_dim=1, hidden_dim=200, num_networks=7, num_elites=5, session=None):
 
-    return Discriminator(obs_dim * 2 + rew_dim, hidden_dim)
+    return Discriminator(obs_dim * 2 + rew_dim + act_dim, hidden_dim)
 
 class TensorStandardScaler:
     def __init__(self, dim, device):
