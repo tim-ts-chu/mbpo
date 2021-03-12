@@ -30,7 +30,7 @@ def plot_trajectories(writer, label, epoch, env_traj, model_traj, means, stds, c
         X = range(len(model_states[i]))
 
         ax.fill_between(X, means[i]+stds[i], means[i]-stds[i], color='r', alpha=0.5)
-        ax.plot(env_states[i],   color='k')
+        ax.plot(env_states[i], color='k')
         ax.plot(model_states[i], color='b')
         ax.plot(means[i], color='r')
 
@@ -43,8 +43,8 @@ def plot_trajectories(writer, label, epoch, env_traj, model_traj, means, stds, c
 
     # Plot conf score
     ax = axes[-1]
-    ax.plot(conf_r, color='k', marker='x')
-    ax.plot(conf_f, color='b', marker='x')
+    ax.plot(conf_r, color='k', marker='o', markersize=2)
+    ax.plot(conf_f, color='b', marker='o', markersize=2)
     ax.set_title('confidence score')
 
     plt.tight_layout()
@@ -92,7 +92,7 @@ def record_trajectories(writer, label, epoch, env_images, model_images=None):
 
 def visualize_policy(real_env, fake_env, policy, disc, writer, timestep, max_steps=100, focus=None, label='model_vis', img_dim=128):
     init_obs = real_env.reset()
-    obs = init_obs.copy()
+    obs_f = obs_r = obs = init_obs.copy()
 
     observations_r = [obs]
     observations_f = [obs]
@@ -118,8 +118,9 @@ def visualize_policy(real_env, fake_env, policy, disc, writer, timestep, max_ste
             terminals_r.append(term_r)
 
             # add discriminator score
-            score = disc.predict(np.concatenate([obs, next_obs_r, [rew_r]]))
+            score = disc.predict(np.concatenate([obs_r, [rew_r], next_obs_r - obs_r]))
             conf_r.append(score)
+            obs_r = next_obs_r
 
         if not term_f:
             next_obs_f, rew_f, term_f, info_f = fake_env.step(obs, act)
@@ -130,8 +131,9 @@ def visualize_policy(real_env, fake_env, policy, disc, writer, timestep, max_ste
             stds_f.append(info_f['std'])
 
             # add discriminator score
-            score = disc.predict(np.concatenate([obs, next_obs_f, rew_f]))
+            score = disc.predict(np.concatenate([obs_f, rew_f, next_obs_f - obs_f]))
             conf_f.append(score)
+            obs_f = next_obs_f
         
         actions.append(act)
 

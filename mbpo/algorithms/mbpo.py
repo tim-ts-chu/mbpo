@@ -370,7 +370,7 @@ class MBPO(RLAlgorithm):
                 new_pool_size
             ))
             self._model_pool = SimpleReplayPool(obs_space, act_space, new_pool_size)
-        
+
         elif self._model_pool._max_size != new_pool_size:
             print('[ MBPO ] Updating model pool | {:.2e} --> {:.2e}'.format(
                 self._model_pool._max_size, new_pool_size
@@ -391,9 +391,14 @@ class MBPO(RLAlgorithm):
         keys = env_batch.keys()
         train_batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
 
-        train_inputs = np.concatenate([train_batch['observations'], train_batch['next_observations'], train_batch['rewards']], axis=1)
-        # train_inputs = train_batch['next_observations']
-        train_outputs = np.concatenate((np.ones(num_samples, dtype=np.float32), np.zeros(num_samples, dtype=np.float32)), axis=0)
+        train_inputs = np.concatenate([
+            train_batch['observations'],
+            train_batch['rewards'],
+            train_batch['next_observations'] - train_batch['observations'],
+            ], axis=1)
+        train_outputs = np.concatenate((
+            np.ones(num_samples, dtype=np.float32) * 0.9,
+            np.ones(num_samples, dtype=np.float32) * 0.1), axis=0) # soft-label
 
         disc_train_metrics = self._disc.train(train_inputs, train_outputs, **kwargs)
         return disc_train_metrics
@@ -401,7 +406,7 @@ class MBPO(RLAlgorithm):
     def _train_model(self, **kwargs):
         env_samples = self._pool.return_all_samples()
         train_inputs, train_outputs = format_samples_for_training(env_samples)
-        model_metrics = self._model.train(train_inputs, train_outputs, **kwargs)
+        model_metrics = self._model.train(train_inputs, train_outputs, self._disc, **kwargs)
         return model_metrics
 
     def _rollout_model(self, rollout_batch_size, **kwargs):

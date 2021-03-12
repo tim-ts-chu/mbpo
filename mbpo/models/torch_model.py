@@ -14,7 +14,8 @@ def construct_torch_model(obs_dim=11, act_dim=3, rew_dim=1, hidden_dim=200, num_
             num_elites,
             input_dim=obs_dim+act_dim,
             output_dim=obs_dim+rew_dim,
-            hidden_dim=hidden_dim)
+            hidden_dim=hidden_dim,
+            obs_dim=obs_dim)
 
     return model
 
@@ -70,11 +71,12 @@ class WorldNet(torch.nn.Module):
 
 class WorldModel:
 
-    def __init__(self, num_networks, num_elites, input_dim, output_dim, hidden_dim):
+    def __init__(self, num_networks, num_elites, input_dim, output_dim, hidden_dim, obs_dim):
 
         self._device_id = 0 # hardcode
         self.num_nets = num_networks
         self.num_elites = num_elites
+        self._obs_dim = obs_dim
         self._output_dim = output_dim
         self._model = {}
         self._scaler = TensorStandardScaler(input_dim, self._device_id)
@@ -125,7 +127,7 @@ class WorldModel:
             {'params': [self._max_logvar, self._min_logvar]}
             ], lr=0.001) 
 
-    def _losses(self, inputs, targets, mse_only=False):
+    def _losses(self, inputs, targets, mse_only=False, disc=None):
         """
         inputs: (num_nets, batch_size, state_dim + act_dim)
         targets: (num_nets, batch_size, state_dim + rew_dim)
@@ -133,8 +135,7 @@ class WorldModel:
         """
         losses = []
         for i in range(self.num_nets):
-            x = self._scaler.transform(inputs[i,:,:])
-            out = self._model[i](x)
+            out = self._model[i](self._scaler.transform(inputs[i,:,:]))
             mean, logvar = out[:, :self._output_dim], out[:, self._output_dim:]
 
             logvar = self._max_logvar - F.softplus(self._max_logvar - logvar)
@@ -152,11 +153,21 @@ class WorldModel:
             var_loss = 0.01 * (self._max_logvar.sum() - self._min_logvar.sum())
             reg_loss = self._model[i].get_decays()
 
-            total_loss = train_loss + var_loss + reg_loss
+
+            # gan loss
+            logits = disc.predict(
+                    torch.cat((inputs[i,:,:self._obs_dim], mean), dim=1),
+                    ret_logits=True)
+            batch_size = inputs.shape[1] # input dim is (ensemble_size, batch_size, obs_dim + act_dim)
+            labels = torch.ones(batch_size, device=self._device_id) *  # non-soft-label
+            gan_loss = 1 * F.binary_cross_entropy_with_logits(logits.flatten(), labels)
+
+            total_loss = train_loss + var_loss + reg_loss + gan_loss
 
             losses.append(total_loss)
 
-            # print("***** train:", train_loss.item(), "var:", var_loss.item(), "reg:", reg_loss.item(), "self.mse:", mse_loss.item())
+            # print("***** train:{:.5f} var:{:.5f} reg:{:.5f} mse:{:.5f} gan:{:.5f}".format(
+                # train_loss.item(), var_loss.item(), reg_loss.item(), mse_loss.item(), gan_loss.item()))
 
         return torch.stack(losses)
 
@@ -195,7 +206,7 @@ class WorldModel:
         else:
             return False
 
-    def train(self, inputs, targets,
+    def train(self, inputs, targets, disc,
               batch_size=32, max_epochs=None, max_epochs_since_update=5,
               hide_progress=False, holdout_ratio=0.0, max_logging=5000, max_grad_updates=None, timer=None, max_t=None):
         """Trains/Continues network training
@@ -260,7 +271,7 @@ class WorldModel:
                     # feed_dict={self.sy_train_in: inputs[batch_idxs], self.sy_train_targ: targets[batch_idxs]}
                 # )
 
-                losses = self._losses(inputs[batch_idxs, :], targets[batch_idxs, :])
+                losses = self._losses(inputs[batch_idxs, :], targets[batch_idxs, :], disc=disc)
                 self._optim.zero_grad()
                 losses.sum().backward()
                 self._optim.step()
@@ -346,7 +357,7 @@ class WorldModel:
         if timer: timer.stamp('bnn_end')
 
         val_loss = (np.sort(holdout_losses)[:self.num_elites]).mean()
-        model_metrics = {'val_lossh': val_loss}
+        model_metrics = {'val_loss': val_loss}
         print('[ BNN ] Holdout (Torch)', np.sort(holdout_losses), model_metrics)
         return OrderedDict(model_metrics)
 

@@ -65,8 +65,8 @@ class Discriminator:
         for batch_num in range(int(np.ceil(idxs.shape[-1] / disc_batch_size))):
             batch_idxs = idxs[batch_num * disc_batch_size:(batch_num + 1) * disc_batch_size]
 
-            logits = self._model(self._scaler.transform(inputs[batch_idxs, :])).squeeze()
-            loss = F.binary_cross_entropy_with_logits(logits, targets[batch_idxs].squeeze())
+            logits = self._model(self._scaler.transform(inputs[batch_idxs, :])).flatten()
+            loss = F.binary_cross_entropy_with_logits(logits, targets[batch_idxs].flatten())
 
             self._optim.zero_grad()
             loss.backward()
@@ -76,16 +76,32 @@ class Discriminator:
             progress.update()
             
         with torch.no_grad():
-            logits = self._model(self._scaler.transform(holdout_inputs)).squeeze()
-            val_loss = F.binary_cross_entropy_with_logits(logits, holdout_targets.squeeze())
+            logits = self._model(self._scaler.transform(holdout_inputs)).flatten()
+            val_loss = F.binary_cross_entropy_with_logits(logits, holdout_targets.flatten())
 
         disc_metrics = {'disc_val_loss': val_loss, 'disc_loss': loss}
         print('disc_val_loss:', val_loss)
         return OrderedDict(disc_metrics)
 
-    def predict(self, inputs):
-        inputs = torch.from_numpy(inputs).to(self._device_id).float()
-        with torch.no_grad():
+    def predict(self, inputs, ret_logits=False):
+        """
+        @param inputs: (batch, obs_dim + next_obs_diff_dim + rew_dim)
+        @param ret_logits: if return logits, build computational graph; otherwise no_grad 
+
+        Inputs here should NOT be scaled because the model discriminate on real data,
+        and has its own scaler
+
+        """
+
+        if type(inputs) is not torch.Tensor:
+            inputs = torch.from_numpy(inputs).to(self._device_id).float()
+
+        if ret_logits:
             logits = self._model(self._scaler.transform(inputs))
-        return torch.sigmoid(logits)
+            return logits
+        else:
+            with torch.no_grad():
+                logits = self._model(self._scaler.transform(inputs))
+            return torch.sigmoid(logits)
+
 

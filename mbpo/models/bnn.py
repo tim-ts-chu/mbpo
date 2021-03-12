@@ -196,7 +196,7 @@ class BNN:
             total_loss = train_loss + reg_loss + var_loss
             self.mse_loss = self._compile_losses(self.sy_train_in, self.sy_train_targ, inc_var_loss=False)
 
-            # print_op = tf.print("***** train:", train_loss, "var:", var_loss, "reg:", reg_loss, "self.mse:", self.mse_loss)
+            # print_op = tf.print("***** train:", train_loss, "var:", var_loss, "reg:", reg_loss, "mse:", self.mse_loss)
             # with tf.control_dependencies([print_op]):
                 # self.train_op = self.optimizer.minimize(total_loss, var_list=self.optvars)
             self.train_op = self.optimizer.minimize(total_loss, var_list=self.optvars)
