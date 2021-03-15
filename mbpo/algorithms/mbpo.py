@@ -170,7 +170,7 @@ class MBPO(RLAlgorithm):
         self._init_critic_update()
 
     def _train(self):
-        
+
         """Return a generator that performs RL training.
 
         Args:

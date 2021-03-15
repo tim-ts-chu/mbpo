@@ -127,7 +127,7 @@ class WorldModel:
             {'params': [self._max_logvar, self._min_logvar]}
             ], lr=0.001) 
 
-    def _losses(self, inputs, targets, mse_only=False, disc=None):
+    def _losses(self, inputs, targets, mse_only=False, disc=None, ret_prog=False):
         """
         inputs: (num_nets, batch_size, state_dim + act_dim)
         targets: (num_nets, batch_size, state_dim + rew_dim)
@@ -160,14 +160,20 @@ class WorldModel:
                     ret_logits=True)
             batch_size = inputs.shape[1] # input dim is (ensemble_size, batch_size, obs_dim + act_dim)
             labels = torch.ones(batch_size, device=self._device_id) # non-soft-label
-            gan_loss = 1 * F.binary_cross_entropy_with_logits(logits.flatten(), labels)
+            gan_loss = 1.0 * F.binary_cross_entropy_with_logits(logits.flatten(), labels)
 
             total_loss = train_loss + var_loss + reg_loss + gan_loss
 
             losses.append(total_loss)
 
-            # print("***** train:{:.5f} var:{:.5f} reg:{:.5f} mse:{:.5f} gan:{:.5f}".format(
-                # train_loss.item(), var_loss.item(), reg_loss.item(), mse_loss.item(), gan_loss.item()))
+            if ret_prog:
+                prog = [
+                    ['train', train_loss.item()],
+                    ['var', var_loss.item()],
+                    ['reg', reg_loss.item()],
+                    ['mse', mse_loss.item()],
+                    ['gan', gan_loss.item()]]
+                return torch.stack(losses), prog
 
         return torch.stack(losses)
 
@@ -271,7 +277,7 @@ class WorldModel:
                     # feed_dict={self.sy_train_in: inputs[batch_idxs], self.sy_train_targ: targets[batch_idxs]}
                 # )
 
-                losses = self._losses(inputs[batch_idxs, :], targets[batch_idxs, :], disc=disc)
+                losses, prog = self._losses(inputs[batch_idxs, :], targets[batch_idxs, :], disc=disc, ret_prog=True)
                 self._optim.zero_grad()
                 losses.sum().backward()
                 self._optim.step()
@@ -318,7 +324,7 @@ class WorldModel:
 
                     named_losses = [['M{}'.format(i), losses[i]] for i in range(len(losses))]
                     named_holdout_losses = [['V{}'.format(i), holdout_losses[i]] for i in range(len(holdout_losses))]
-                    named_losses = named_losses + named_holdout_losses + [['T', time.time() - t0]]
+                    named_losses = named_losses + named_holdout_losses + [['T', time.time() - t0]] + prog
                     progress.set_description(named_losses)
 
                     break_train = self._save_best(epoch, holdout_losses)
