@@ -52,7 +52,7 @@ class Plotter:
         for n_steps in val_steps:
             ncols = 3 # hardcode 3 as ncols
             nrows = math.ceil((self._dim + 1) / ncols)
-            fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=(20,30))
+            fig, ax = plt.subplots(nrows=nrows, ncols=ncols, figsize=(ncols*6,nrows*3))
             for i in range(nrows):
                 for j in range(ncols):
                     plot_count =  ncols * i + j

@@ -134,7 +134,7 @@ def visualize_policy(real_env, fake_env, policy, disc, writer, timestep, max_ste
             score = disc.predict(np.concatenate([obs_f, act, rew_f, next_obs_f - obs_f]))
             conf_f.append(score)
             obs_f = next_obs_f
-        
+
         actions.append(act)
 
         if not term_f:
@@ -158,30 +158,88 @@ def visualize_model_perf(real_env, fake_env, policy, writer, timestep, max_steps
     init_obs = real_env.reset()
     obs = init_obs.copy() #(17, ) for walker
 
-    plotter = Plotter(obs.shape[0])
+    obs_dim = obs.shape[0]
+    plotter = Plotter(obs_dim)
+
+    traj_len = np.zeros(max_steps, dtype=np.int32)
+    rew_obs_r = np.zeros((1 + obs_dim, max_steps))
+    rew_obs_f = np.zeros((1 + obs_dim, max_steps))
 
     step = 0
+    traj_len_count = 1
     while step < max_steps:
         act = policy.actions_np(obs[None])[0]
 
         next_obs_r, rew_r, term_r, info_r = real_env.step(act)
         next_obs_f, rew_f, term_f, info_f = fake_env.step(obs, act)
 
-        plotter.add_next_state_dp(0, 
+        plotter.add_next_state_dp(0,
                 torch.from_numpy(next_obs_r).view(1, -1).float(),
                 torch.from_numpy(next_obs_f).view(1, -1).float())
         plotter.add_reward_dp(0,
                 torch.tensor(rew_r).view(1, -1).float(),
                 torch.tensor(rew_f).view(1, -1).float())
 
+        # collect evaluation data
+        traj_len[step] = traj_len_count
+        rew_obs_r[:, step] = np.concatenate([[rew_r], next_obs_r])
+        rew_obs_f[:, step] = np.concatenate([rew_f, next_obs_f])
+
         if term_r:
             init_obs = real_env.reset()
             obs = init_obs.copy()
+            traj_len_count = 0
         else:
             obs = next_obs_r
 
+        traj_len_count += 1
         step += 1
 
     # plotter.dump_plots('/home/timchu/mbpo-torch', [0])
     plotter.dump_plots(None, [0], writer, label, timestep)
+    calculate_rollout_errors(traj_len, rew_obs_r, rew_obs_f, writer, timestep)
+
+def calculate_rollout_errors(traj_len, rew_obs_r, rew_obs_f, writer, timestep):
+
+    dim, num_steps = rew_obs_r.shape
+
+    mean = rew_obs_r.mean(axis=1, keepdims=True) # (1 + obs_dim, 1)
+    std = rew_obs_r.std(axis=1, keepdims=True) # (1 + obs_dim, 1)
+    rew_obs_r = (rew_obs_r - mean) / std
+    rew_obs_f = (rew_obs_f - mean) / std
+
+    mse = np.mean((rew_obs_r - rew_obs_f) ** 2, axis=0) # (num_steps, )
+
+    mse_err_1 = []
+    mse_err_5 = []
+    mse_err_10 = []
+    culmulative_err = 0
+    for step in range(num_steps):
+        traj_len_count = traj_len[step]
+
+        if traj_len_count == 1:
+            culmulative_err = float(mse[step])
+        else:
+            culmulative_err += mse[step]
+
+        if traj_len_count == 1:
+            mse_err_1.append(culmulative_err)
+        elif traj_len_count == 5:
+            mse_err_5.append(culmulative_err)
+        elif traj_len_count == 10:
+            mse_err_10.append(culmulative_err)
+
+    if mse_err_1:
+        mse_err_1 = np.asarray(mse_err_1)
+        writer.add_scalar('ray/tune/model/cum_mse-1-mean', mse_err_1.mean(), timestep)
+        writer.add_scalar('ray/tune/model/cum_mse-1-std', mse_err_1.std(), timestep)
+    if mse_err_5:
+        mse_err_5 = np.asarray(mse_err_5)
+        writer.add_scalar('ray/tune/model/cum_mse-5-mean', mse_err_5.mean(), timestep)
+        writer.add_scalar('ray/tune/model/cum_mse-5-std', mse_err_5.std(), timestep)
+    if mse_err_10:
+        mse_err_10 = np.asarray(mse_err_10)
+        writer.add_scalar('ray/tune/model/cum_mse-10-mean', mse_err_10.mean(), timestep)
+        writer.add_scalar('ray/tune/model/cum_mse-10-std', mse_err_10.std(), timestep)
+
 
