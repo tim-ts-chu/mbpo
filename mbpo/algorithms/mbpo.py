@@ -240,7 +240,6 @@ class MBPO(RLAlgorithm):
                     model_metrics.update(model_rollout_metrics)
 
                     gt.stamp('epoch_rollout_model')
-                    self._visualize_model(self._evaluation_environment, self._total_timestep)
                     self._training_progress.resume()
 
 
@@ -253,6 +252,8 @@ class MBPO(RLAlgorithm):
 
                 self._timestep_after_hook()
                 gt.stamp('timestep_after_hook')
+
+            self._visualize_model(self._evaluation_environment, self._total_timestep)
 
             training_paths = self.sampler.get_last_n_paths(
                 math.ceil(self._epoch_length / self.sampler._max_path_length))

@@ -31,10 +31,8 @@ class Discriminator:
         self._model = torch.nn.Sequential(
             torch.nn.Linear(input_dim, hidden_dim),
             torch.nn.LeakyReLU(),
-            # torch.nn.ReLU(),
             torch.nn.Linear(hidden_dim, hidden_dim),
             torch.nn.LeakyReLU(),
-            # torch.nn.ReLU(),
             # torch.nn.Linear(hidden_dim, hidden_dim),
             # torch.nn.LeakyReLU(),
             # torch.nn.Linear(hidden_dim, hidden_dim),
@@ -79,8 +77,7 @@ class Discriminator:
             logits = self._model(self._scaler.transform(holdout_inputs)).flatten()
             val_loss = F.binary_cross_entropy_with_logits(logits, holdout_targets.flatten())
 
-        disc_metrics = {'disc_val_loss': val_loss, 'disc_loss': loss}
-        print('disc_val_loss:', val_loss)
+        disc_metrics = {'disc_val_loss': val_loss.item(), 'disc_loss': loss.item()}
         return OrderedDict(disc_metrics)
 
     def predict(self, inputs, ret_logits=False):

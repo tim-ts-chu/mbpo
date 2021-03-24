@@ -81,7 +81,7 @@ class WorldModel:
         self._model = {}
         self._scaler = TensorStandardScaler(input_dim, self._device_id)
         
-        parameters = []
+        self._parameters = []
         for i in range(num_networks):
             # self._model[i] = torch.nn.Sequential(
                 # torch.nn.Linear(input_dim, hidden_dim),
@@ -96,12 +96,12 @@ class WorldModel:
                 # ).to(self._device_id)
             self._model[i] = WorldNet(input_dim, hidden_dim, output_dim).to(self._device_id)
             print(self._model[i])
-            parameters += list(self._model[i].parameters())
+            self._parameters += list(self._model[i].parameters())
 
         self._max_logvar = torch.full((output_dim,), 0.5, requires_grad=True, device=self._device_id, dtype=torch.float)
         self._min_logvar = torch.full((output_dim,), -10, requires_grad=True, device=self._device_id, dtype=torch.float)
 
-        print('parameters:', parameters)
+        # print('parameters:', parameters)
         # print('self._max_logvar:', self._max_logvar.is_leaf)
         # print('self._min_logvar:', self._min_logvar.is_leaf)
         # self._optim = torch.optim.AdamW([
@@ -146,8 +146,10 @@ class WorldModel:
                 losses.append(mse_loss)
                 continue
 
+            mean_mse = mean.clone()
+            mean_mse.retain_grad()
             inv_var = torch.exp(-logvar)
-            train_loss = (((mean - targets[i,:,:]) ** 2) * inv_var) + logvar
+            train_loss = (((mean_mse - targets[i,:,:]) ** 2) * inv_var) + logvar
             train_loss = train_loss.mean(-1).mean(-1)
 
             var_loss = 0.01 * (self._max_logvar.sum() - self._min_logvar.sum())
@@ -155,17 +157,19 @@ class WorldModel:
 
 
             # gan loss
+            mean_gan = mean.clone()
+            mean_gan.retain_grad()
             logits = disc.predict(
-                    torch.cat((inputs[i,:,:], mean), dim=1),
+                    torch.cat((inputs[i,:,:], mean_gan), dim=1),
                     ret_logits=True)
             batch_size = inputs.shape[1] # input dim is (ensemble_size, batch_size, obs_dim + act_dim)
             labels = torch.ones(batch_size, device=self._device_id) # non-soft-label
-            gan_loss = 1.0 * F.binary_cross_entropy_with_logits(logits.flatten(), labels)
+            gan_loss = F.binary_cross_entropy_with_logits(logits.flatten(), labels)
 
-            total_loss = train_loss + var_loss + reg_loss + gan_loss
+            total_loss = train_loss + var_loss + reg_loss + 1.0 * gan_loss
 
             losses.append(total_loss)
-
+            
             if ret_prog:
                 prog = [
                     ['train', train_loss.item()],
@@ -173,7 +177,12 @@ class WorldModel:
                     ['reg', reg_loss.item()],
                     ['mse', mse_loss.item()],
                     ['gan', gan_loss.item()]]
-                return torch.stack(losses), prog
+                info = {
+                        'gan_loss': gan_loss.item(),
+                        'mean_mse': mean_mse,
+                        'mean_gan': mean_gan,
+                        }
+                return torch.stack(losses), prog, info
 
         return torch.stack(losses)
 
@@ -265,6 +274,7 @@ class WorldModel:
         # else:
         #     epoch_range = trange(epochs, unit="epoch(s)", desc="Network training")
 
+        model_metrics = {}
         t0 = time.time()
         grad_updates = 0
 
@@ -277,9 +287,15 @@ class WorldModel:
                     # feed_dict={self.sy_train_in: inputs[batch_idxs], self.sy_train_targ: targets[batch_idxs]}
                 # )
 
-                losses, prog = self._losses(inputs[batch_idxs, :], targets[batch_idxs, :], disc=disc, ret_prog=True)
+                losses, prog, info = self._losses(inputs[batch_idxs, :], targets[batch_idxs, :], disc=disc, ret_prog=True)
                 self._optim.zero_grad()
                 losses.sum().backward()
+                model_metrics.update({
+                    'gan_loss': info['gan_loss'],
+                    'gradnorm_mse_output': torch.nn.utils.clip_grad_norm_(info['mean_mse'], 10e9),
+                    'gradnorm_gan_output': torch.nn.utils.clip_grad_norm_(info['mean_gan'], 10e9),
+                    'gradnorm_model_weight': torch.nn.utils.clip_grad_norm_(self._parameters, 10e9),
+                    })
                 self._optim.step()
 
                 grad_updates += 1
@@ -363,7 +379,7 @@ class WorldModel:
         if timer: timer.stamp('bnn_end')
 
         val_loss = (np.sort(holdout_losses)[:self.num_elites]).mean()
-        model_metrics = {'val_loss': val_loss}
+        model_metrics.update({'val_loss': val_loss})
         print('[ BNN ] Holdout (Torch)', np.sort(holdout_losses), model_metrics)
         return OrderedDict(model_metrics)
 
