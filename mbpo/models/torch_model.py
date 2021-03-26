@@ -287,6 +287,7 @@ class WorldModel:
                     # feed_dict={self.sy_train_in: inputs[batch_idxs], self.sy_train_targ: targets[batch_idxs]}
                 # )
 
+                disc.eval()
                 losses, prog, info = self._losses(inputs[batch_idxs, :], targets[batch_idxs, :], disc=disc, ret_prog=True)
                 self._optim.zero_grad()
                 losses.sum().backward()
@@ -297,6 +298,7 @@ class WorldModel:
                     'gradnorm_model_weight': torch.nn.utils.clip_grad_norm_(self._parameters, 10e9),
                     })
                 self._optim.step()
+                disc.eval(False)
 
                 grad_updates += 1
 

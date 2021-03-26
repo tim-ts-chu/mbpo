@@ -106,6 +106,8 @@ def visualize_policy(real_env, fake_env, policy, disc, writer, timestep, max_ste
     conf_r = []
     conf_f = []
 
+    disc.eval()
+
     i = 0
     term_r, term_f = False, False
     while not (term_r and term_f) and i <= max_steps:
@@ -118,7 +120,7 @@ def visualize_policy(real_env, fake_env, policy, disc, writer, timestep, max_ste
             terminals_r.append(term_r)
 
             # add discriminator score
-            score = disc.predict(np.concatenate([obs_r, act, [rew_r], next_obs_r - obs_r]))
+            score = disc.predict(np.concatenate([obs_r, act, [rew_r], next_obs_r - obs_r]).reshape(1, -1))
             conf_r.append(score)
             obs_r = next_obs_r
 
@@ -131,7 +133,7 @@ def visualize_policy(real_env, fake_env, policy, disc, writer, timestep, max_ste
             stds_f.append(info_f['std'])
 
             # add discriminator score
-            score = disc.predict(np.concatenate([obs_f, act, rew_f, next_obs_f - obs_f]))
+            score = disc.predict(np.concatenate([obs_f, act, rew_f, next_obs_f - obs_f]).reshape(1, -1))
             conf_f.append(score)
             obs_f = next_obs_f
 
@@ -153,6 +155,7 @@ def visualize_policy(real_env, fake_env, policy, disc, writer, timestep, max_ste
     rewards_observations_f = np.concatenate((rewards_f, terminals_f, np.array(observations_f)), -1)
     plot_trajectories(writer, label, timestep, rewards_observations_r, rewards_observations_f, means_f, stds_f, conf_r, conf_f)
     #record_trajectories(writer, label, epoch, images_r)
+    disc.eval(False)
 
 def visualize_model_perf(real_env, fake_env, policy, writer, timestep, max_steps=1000, focus=None, label='model_perf', img_dim=128):
     init_obs = real_env.reset()
@@ -210,9 +213,9 @@ def calculate_rollout_errors(traj_len, rew_obs_r, rew_obs_f, writer, timestep):
 
     mse = np.mean((rew_obs_r - rew_obs_f) ** 2, axis=0) # (num_steps, )
 
-    mse_err_1 = []
-    mse_err_5 = []
     mse_err_10 = []
+    mse_err_20 = []
+    mse_err_30 = []
     culmulative_err = 0
     for step in range(num_steps):
         traj_len_count = traj_len[step]
@@ -222,24 +225,24 @@ def calculate_rollout_errors(traj_len, rew_obs_r, rew_obs_f, writer, timestep):
         else:
             culmulative_err += mse[step]
 
-        if traj_len_count == 1:
-            mse_err_1.append(culmulative_err)
-        elif traj_len_count == 5:
-            mse_err_5.append(culmulative_err)
-        elif traj_len_count == 10:
+        if traj_len_count == 10:
             mse_err_10.append(culmulative_err)
+        elif traj_len_count == 20:
+            mse_err_20.append(culmulative_err)
+        elif traj_len_count == 30:
+            mse_err_30.append(culmulative_err)
 
-    if mse_err_1:
-        mse_err_1 = np.asarray(mse_err_1)
-        writer.add_scalar('ray/tune/model/cum_mse-1-mean', mse_err_1.mean(), timestep)
-        writer.add_scalar('ray/tune/model/cum_mse-1-std', mse_err_1.std(), timestep)
-    if mse_err_5:
-        mse_err_5 = np.asarray(mse_err_5)
-        writer.add_scalar('ray/tune/model/cum_mse-5-mean', mse_err_5.mean(), timestep)
-        writer.add_scalar('ray/tune/model/cum_mse-5-std', mse_err_5.std(), timestep)
     if mse_err_10:
         mse_err_10 = np.asarray(mse_err_10)
         writer.add_scalar('ray/tune/model/cum_mse-10-mean', mse_err_10.mean(), timestep)
         writer.add_scalar('ray/tune/model/cum_mse-10-std', mse_err_10.std(), timestep)
+    if mse_err_20:
+        mse_err_20 = np.asarray(mse_err_20)
+        writer.add_scalar('ray/tune/model/cum_mse-20-mean', mse_err_20.mean(), timestep)
+        writer.add_scalar('ray/tune/model/cum_mse-20-std', mse_err_20.std(), timestep)
+    if mse_err_30:
+        mse_err_30 = np.asarray(mse_err_30)
+        writer.add_scalar('ray/tune/model/cum_mse-30-mean', mse_err_30.mean(), timestep)
+        writer.add_scalar('ray/tune/model/cum_mse-30-std', mse_err_30.std(), timestep)
 
 

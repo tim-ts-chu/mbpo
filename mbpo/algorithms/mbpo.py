@@ -383,14 +383,23 @@ class MBPO(RLAlgorithm):
             self._model_pool = new_pool
 
     def _train_disc(self, **kwargs):
-        num_env_samples = self._pool.size
-        num_model_samples = self._model_pool.size
-        num_samples = min(num_env_samples, num_model_samples)
-        env_batch = self._pool.random_batch(num_samples)
-        model_batch = self._model_pool.random_batch(num_samples)
+        # num_env_samples = self._pool.size
+        # num_model_samples = self._model_pool.size
+        # num_samples = min(num_env_samples, num_model_samples)
+        # env_batch = self._pool.random_batch(num_samples)
+        # model_batch = self._model_pool.random_batch(num_samples)
 
-        keys = env_batch.keys()
-        train_batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in keys}
+        num_samples = self._pool.size
+        env_batch = self._pool.return_all_samples()
+        model_batch = {}
+        model_batch['observations'] = env_batch['observations']
+        model_batch['actions'] = self._policy.actions_np(model_batch['observations'])
+        model_batch['next_observations'], model_batch['rewards'], model_batch['terminals'], _ = self.fake_env.step(
+                model_batch['observations'], model_batch['actions'])
+        model_batch['next_observations'] = model_batch['next_observations'].astype(np.float32)
+        model_batch['rewards'] = model_batch['rewards'].astype(np.float32)
+
+        train_batch = {k: np.concatenate((env_batch[k], model_batch[k]), axis=0) for k in env_batch.keys()}
 
         train_inputs = np.concatenate([
             train_batch['observations'],
@@ -398,9 +407,10 @@ class MBPO(RLAlgorithm):
             train_batch['rewards'],
             train_batch['next_observations'] - train_batch['observations'],
             ], axis=1)
+
         train_outputs = np.concatenate((
             np.ones(num_samples, dtype=np.float32) * 0.9,
-            np.ones(num_samples, dtype=np.float32) * 0.1), axis=0) # soft-label
+            np.ones(num_samples, dtype=np.float32) * 0.0), axis=0) # only one-side soft-label
 
         disc_train_metrics = self._disc.train(train_inputs, train_outputs, **kwargs)
         return disc_train_metrics

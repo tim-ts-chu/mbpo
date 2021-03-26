@@ -30,19 +30,31 @@ class Discriminator:
 
         self._model = torch.nn.Sequential(
             torch.nn.Linear(input_dim, hidden_dim),
+            # torch.nn.BatchNorm1d(hidden_dim),
             torch.nn.LeakyReLU(),
             torch.nn.Linear(hidden_dim, hidden_dim),
+            # torch.nn.BatchNorm1d(hidden_dim),
             torch.nn.LeakyReLU(),
-            # torch.nn.Linear(hidden_dim, hidden_dim),
-            # torch.nn.LeakyReLU(),
-            # torch.nn.Linear(hidden_dim, hidden_dim),
-            # torch.nn.LeakyReLU(),
+            torch.nn.Linear(hidden_dim, hidden_dim),
+            # torch.nn.BatchNorm1d(hidden_dim),
+            torch.nn.LeakyReLU(),
+            torch.nn.Linear(hidden_dim, hidden_dim),
+            # torch.nn.BatchNorm1d(hidden_dim),
+            torch.nn.LeakyReLU(),
             torch.nn.Linear(hidden_dim, 1)
             ).to(self._device_id)
+
+        print('Discriminator:\n', self._model)
 
         self._optim = torch.optim.AdamW(self._model.parameters(), lr=0.001)
 
         self._scaler = TensorStandardScaler(input_dim, self._device_id)
+
+    def eval(self, mode=True):
+        if mode:
+            self._model.eval()
+        else:
+            self._model.train()
 
     def train(self, inputs, targets, disc_batch_size):
 
@@ -59,8 +71,8 @@ class Discriminator:
 
         self._scaler.fit(inputs)
         idxs = np.random.randint(inputs.shape[0], size=inputs.shape[0])
-        progress = Progress(int(np.ceil(idxs.shape[-1] / disc_batch_size)))
-        for batch_num in range(int(np.ceil(idxs.shape[-1] / disc_batch_size))):
+        progress = Progress(int(np.floor(idxs.shape[-1] / disc_batch_size))) # switch from ceil to floor to avoid 1 batch size into batchnorm layer
+        for batch_num in range(int(np.floor(idxs.shape[-1] / disc_batch_size))):
             batch_idxs = idxs[batch_num * disc_batch_size:(batch_num + 1) * disc_batch_size]
 
             logits = self._model(self._scaler.transform(inputs[batch_idxs, :])).flatten()
