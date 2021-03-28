@@ -30,16 +30,12 @@ class Discriminator:
 
         self._model = torch.nn.Sequential(
             torch.nn.Linear(input_dim, hidden_dim),
-            # torch.nn.BatchNorm1d(hidden_dim),
             torch.nn.LeakyReLU(),
             torch.nn.Linear(hidden_dim, hidden_dim),
-            # torch.nn.BatchNorm1d(hidden_dim),
             torch.nn.LeakyReLU(),
             torch.nn.Linear(hidden_dim, hidden_dim),
-            # torch.nn.BatchNorm1d(hidden_dim),
             torch.nn.LeakyReLU(),
             torch.nn.Linear(hidden_dim, hidden_dim),
-            # torch.nn.BatchNorm1d(hidden_dim),
             torch.nn.LeakyReLU(),
             torch.nn.Linear(hidden_dim, 1)
             ).to(self._device_id)

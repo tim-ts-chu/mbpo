@@ -80,6 +80,7 @@ class WorldModel:
         self._output_dim = output_dim
         self._model = {}
         self._scaler = TensorStandardScaler(input_dim, self._device_id)
+        self._curr_timestep = None
         
         self._parameters = []
         for i in range(num_networks):
@@ -166,7 +167,10 @@ class WorldModel:
             labels = torch.ones(batch_size, device=self._device_id) # non-soft-label
             gan_loss = F.binary_cross_entropy_with_logits(logits.flatten(), labels)
 
-            total_loss = train_loss + var_loss + reg_loss + 1.0 * gan_loss
+            if self._curr_timestep >= int(10e3):
+                total_loss = train_loss + var_loss + reg_loss + 1.0 * gan_loss
+            else:
+                total_loss = train_loss + var_loss + reg_loss + 0.0 * gan_loss
 
             losses.append(total_loss)
             
@@ -223,7 +227,7 @@ class WorldModel:
 
     def train(self, inputs, targets, disc,
               batch_size=32, max_epochs=None, max_epochs_since_update=5,
-              hide_progress=False, holdout_ratio=0.0, max_logging=5000, max_grad_updates=None, timer=None, max_t=None):
+              hide_progress=False, holdout_ratio=0.0, max_logging=5000, max_grad_updates=None, timer=None, max_t=None, timestep=None):
         """Trains/Continues network training
 
         Arguments:
@@ -288,6 +292,7 @@ class WorldModel:
                 # )
 
                 disc.eval()
+                self._curr_timestep = timestep
                 losses, prog, info = self._losses(inputs[batch_idxs, :], targets[batch_idxs, :], disc=disc, ret_prog=True)
                 self._optim.zero_grad()
                 losses.sum().backward()
