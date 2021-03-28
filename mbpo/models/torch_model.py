@@ -161,7 +161,8 @@ class WorldModel:
             mean_gan = mean.clone()
             mean_gan.retain_grad()
             logits = disc.predict(
-                    torch.cat((inputs[i,:,:], mean_gan), dim=1),
+                    # torch.cat((inputs[i,:,:], mean_gan), dim=1),
+                    mean_gan,
                     ret_logits=True)
             batch_size = inputs.shape[1] # input dim is (ensemble_size, batch_size, obs_dim + act_dim)
             labels = torch.ones(batch_size, device=self._device_id) # non-soft-label
