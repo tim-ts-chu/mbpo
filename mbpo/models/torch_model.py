@@ -158,10 +158,13 @@ class WorldModel:
 
 
             # gan loss
-            mean_gan = mean.clone()
-            mean_gan.retain_grad()
+            sample = mean + torch.randn_like(mean) * logvar.exp().sqrt()
+            sample.retain_grad()
+            # mean_gan = mean.clone()
+            # mean_gan.retain_grad()
             logits = disc.predict(
-                    torch.cat((inputs[i,:,:], mean_gan), dim=1),
+                    # torch.cat((inputs[i,:,:], mean_gan), dim=1),
+                    torch.cat((inputs[i,:,:], sample), dim=1),
                     ret_logits=True)
             batch_size = inputs.shape[1] # input dim is (ensemble_size, batch_size, obs_dim + act_dim)
             labels = torch.ones(batch_size, device=self._device_id) # non-soft-label
@@ -184,7 +187,7 @@ class WorldModel:
                 info = {
                         'gan_loss': gan_loss.item(),
                         'mean_mse': mean_mse,
-                        'mean_gan': mean_gan,
+                        'mean_gan': sample,
                         }
                 return torch.stack(losses), prog, info
 
