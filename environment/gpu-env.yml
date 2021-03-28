@@ -5,9 +5,11 @@ channels:
 - defaults
 - conda-forge
 dependencies:
-- python=3.6.5
+- python=3.7.0
 - pip>=18.0
 - conda>=4.5.9
 - patchelf=0.9
+- cudatoolkit=10.0.130
+- pytorch=1.2.0
 - pip:
     - -r requirements.txt
