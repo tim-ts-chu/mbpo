@@ -236,7 +236,7 @@ class MBPO(RLAlgorithm):
 
                     self._set_rollout_length()
                     self._reallocate_model_pool()
-                    model_rollout_metrics = self._rollout_model(rollout_batch_size=self._rollout_batch_size, deterministic=self._deterministic)
+                    model_rollout_metrics = self._rollout_model(rollout_batch_size=self._rollout_batch_size, disc_filter=False, deterministic=self._deterministic)
                     model_metrics.update(model_rollout_metrics)
 
                     gt.stamp('epoch_rollout_model')
@@ -421,7 +421,7 @@ class MBPO(RLAlgorithm):
         model_metrics = self._model.train(train_inputs, train_outputs, self._disc, **kwargs)
         return model_metrics
 
-    def _rollout_model(self, rollout_batch_size, **kwargs):
+    def _rollout_model(self, rollout_batch_size, disc_filter, **kwargs):
         print('[ Model Rollout ] Starting | Epoch: {} | Rollout length: {} | Batch size: {}'.format(
             self._epoch, self._rollout_length, rollout_batch_size
         ))
@@ -432,9 +432,20 @@ class MBPO(RLAlgorithm):
             act = self._policy.actions_np(obs)
 
             next_obs, rew, term, info = self.fake_env.step(obs, act, **kwargs)
-            steps_added.append(len(obs))
 
-            samples = {'observations': obs, 'actions': act, 'next_observations': next_obs, 'rewards': rew, 'terminals': term}
+            if disc_filter:
+                score = self._disc.predict(np.concatenate([rew, next_obs - obs], axis=1)))
+                mask = score[score>0.5]
+                steps_added.append(len(mask))
+                samples = {'observations': obs[mask, :],
+                        'actions': act[mask, :],
+                        'next_observations': next_obs[mask, :],
+                        'rewards': rew[mask, :],
+                        'terminals': term[mask, :]}
+            else:
+                steps_added.append(len(obs))
+                samples = {'observations': obs, 'actions': act, 'next_observations': next_obs, 'rewards': rew, 'terminals': term}
+
             self._model_pool.add_samples(samples)
 
             nonterm_mask = ~term.squeeze(-1)
