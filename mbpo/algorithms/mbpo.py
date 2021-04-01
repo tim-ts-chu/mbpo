@@ -23,7 +23,7 @@ from mbpo.utils.visualization import visualize_policy, visualize_model_perf
 from mbpo.utils.logging import Progress
 import mbpo.utils.filesystem as filesystem
 
-from mbpo.models.torch_model import construct_torch_model
+from mbpo.models.torch_model import construct_torch_model, construct_obs_model
 from mbpo.models.torch_disc import construct_torch_disc
 
 def td_target(reward, discount, next_value):
@@ -102,6 +102,7 @@ class MBPO(RLAlgorithm):
         # self._model = construct_model(obs_dim=obs_dim, act_dim=act_dim, hidden_dim=hidden_dim, num_networks=num_networks, num_elites=num_elites)
         self._model = construct_torch_model(obs_dim=obs_dim, act_dim=act_dim, hidden_dim=hidden_dim, num_networks=num_networks, num_elites=num_elites)
         self._disc = construct_torch_disc(obs_dim=obs_dim, act_dim=act_dim, hidden_dim=hidden_dim, num_networks=num_networks, num_elites=num_elites)
+        self._obs_model = construct_obs_model(obs_dim=obs_dim, act_dim=act_dim, hidden_dim=hidden_dim, num_networks=num_networks, num_elites=num_elites)
         self._static_fns = static_fns
         self.fake_env = FakeEnv(self._model, self._static_fns)
 
@@ -225,10 +226,11 @@ class MBPO(RLAlgorithm):
                         self._epoch, self._model_train_freq, self._timestep, self._total_timestep, self._train_steps_this_epoch, self._num_train_steps)
                     )
 
-                    # train disc
-                    if start_samples >= int(10e3):
-                        disc_train_metrics = self._train_disc(disc_batch_size=256)
-                        model_metrics.update(disc_train_metrics)
+                    disc_train_metrics = self._train_disc(disc_batch_size=256)
+                    model_metrics.update(disc_train_metrics)
+
+                    obs_train_metrics = self._train_obs(obs_batch_size=256)
+                    model_metrics.update(obs_train_metrics)
 
                     model_train_metrics = self._train_model(batch_size=256, max_epochs=None, holdout_ratio=0.2, max_t=self._max_model_t, num_samples=start_samples)
                     model_metrics.update(model_train_metrics)
@@ -381,6 +383,9 @@ class MBPO(RLAlgorithm):
             new_pool.add_samples(samples)
             assert self._model_pool.size == new_pool.size
             self._model_pool = new_pool
+
+    def _train_obs(self, **kwargs):
+        pass
 
     def _train_disc(self, **kwargs):
         # num_env_samples = self._pool.size

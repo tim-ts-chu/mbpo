@@ -4,7 +4,7 @@ params = {
     'domain': 'AntTruncatedObs', ## mbpo/env/ant.py
     'task': 'v2',
 
-    'log_dir': '/mnt/brain1/scratch/timchu/',
+    'log_dir': '/home/timchu/data',
     'exp_name': 'defaults',
 
     'kwargs': {

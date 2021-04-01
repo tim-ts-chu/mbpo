@@ -19,6 +19,14 @@ def construct_torch_model(obs_dim=11, act_dim=3, rew_dim=1, hidden_dim=200, num_
 
     return model
 
+def construct_obs_model(obs_dim=11, act_dim=3, rew_dim=1, hidden_dim=200, num_networks=7, num_elites=5, session=None):
+
+    return WorldNet(
+        input_dim=act_dim,
+        hidden_dim=hidden_dim,
+        output_dim=obs_dim
+        ).to(0)
+
 class TensorStandardScaler:
     def __init__(self, dim, device):
         self._dim = dim
