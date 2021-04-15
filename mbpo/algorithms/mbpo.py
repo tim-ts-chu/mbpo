@@ -226,9 +226,9 @@ class MBPO(RLAlgorithm):
                     )
 
                     # train disc
-                    if start_samples >= int(10e3):
-                        disc_train_metrics = self._train_disc(disc_batch_size=256)
-                        model_metrics.update(disc_train_metrics)
+                    # if start_samples >= int(10e3):
+                        # disc_train_metrics = self._train_disc(disc_batch_size=256)
+                        # model_metrics.update(disc_train_metrics)
 
                     model_train_metrics = self._train_model(batch_size=256, max_epochs=None, holdout_ratio=0.2, max_t=self._max_model_t, num_samples=start_samples)
                     model_metrics.update(model_train_metrics)
@@ -253,7 +253,7 @@ class MBPO(RLAlgorithm):
                 self._timestep_after_hook()
                 gt.stamp('timestep_after_hook')
 
-            self._visualize_model(self._evaluation_environment, self._total_timestep)
+            # self._visualize_model(self._evaluation_environment, self._total_timestep)
 
             training_paths = self.sampler.get_last_n_paths(
                 math.ceil(self._epoch_length / self.sampler._max_path_length))
@@ -460,7 +460,7 @@ class MBPO(RLAlgorithm):
 
         print('[ Visualization ] Starting | Epoch {} | Timestep {} | Log dir: {}\n'.format(self._epoch, timestep, self._log_dir))
         visualize_policy(env, self.fake_env, self._policy, self._disc, self._writer, timestep)
-        visualize_model_perf(env, self.fake_env, self._policy, self._writer, timestep)
+        # visualize_model_perf(env, self.fake_env, self._policy, self._writer, timestep)
         print('[ Visualization ] Done')
         ## set env state
         env.unwrapped.set_state(qpos, qvel)

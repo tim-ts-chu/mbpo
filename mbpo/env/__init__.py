@@ -9,6 +9,14 @@ MBPO_ENVIRONMENT_SPECS = (
         'id': 'HumanoidTruncatedObs-v2',
         'entry_point': (f'mbpo.env.humanoid:HumanoidTruncatedObsEnv'),
     },
+	{
+        'id': 'Walker2dNoisyAct-v2',
+        'entry_point': (f'mbpo.env.walker:Walker2dNoisyActEnv'),
+    },
+	{
+        'id': 'AntTruncatedObsNoisyAct-v2',
+        'entry_point': (f'mbpo.env.ant:AntTruncatedObsNoisyActEnv'),
+    },
 )
 
 def register_mbpo_environments():

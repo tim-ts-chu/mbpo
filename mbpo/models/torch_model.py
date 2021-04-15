@@ -20,18 +20,34 @@ def construct_torch_model(obs_dim=11, act_dim=3, rew_dim=1, hidden_dim=200, num_
     return model
 
 class TensorStandardScaler:
-    def __init__(self, dim, device):
+    def __init__(self, dim, device, norm_type):
         self._dim = dim
         self._mu = torch.zeros(dim, dtype=torch.float, device=device)
         self._std = torch.ones(dim, dtype=torch.float, device=device)
+        self._norm_type = norm_type # can normalize data by either 'std' or 'minmax'
 
     def fit(self, inputs):
         self._mu = inputs.mean(dim=0)
         self._std = inputs.std(dim=0)
+        self._min, _ = inputs.min(dim=0)
+        self._max, _ = inputs.max(dim=0)
         self._std[self._std < 1e-12] = 1.0
 
     def transform(self, inputs):
-        return (inputs - self._mu) / self._std
+        if self._norm_type == 'std':
+            return (inputs - self._mu) / self._std
+        elif self._norm_type == 'minmax':
+            return 2 * ((inputs - self._min) / (self._max - self._min)) - 1
+        else:
+            raise TypeError('wrong norm_type: {}'.format(self._norm_type))
+
+    def inverse(self, inputs):
+        if self._norm_type == 'std':
+            return inputs * (2 * self._std) + self._mu
+        elif self._norm_type == 'minmax':
+            return ((inputs + 1) / 2) * (self._max - self._min) + self._min
+        else:
+            raise TypeError('wrong norm_type: {}'.format(self._norm_type))
 
 class WorldNet(torch.nn.Module):
 
@@ -79,45 +95,17 @@ class WorldModel:
         self._obs_dim = obs_dim
         self._output_dim = output_dim
         self._model = {}
-        self._scaler = TensorStandardScaler(input_dim, self._device_id)
+        self._scaler = TensorStandardScaler(input_dim, self._device_id, 'std')
         self._num_samples = None
         
         self._parameters = []
         for i in range(num_networks):
-            # self._model[i] = torch.nn.Sequential(
-                # torch.nn.Linear(input_dim, hidden_dim),
-                # torch.nn.ReLU(),
-                # torch.nn.Linear(hidden_dim, hidden_dim),
-                # torch.nn.ReLU(),
-                # torch.nn.Linear(hidden_dim, hidden_dim),
-                # torch.nn.ReLU(),
-                # torch.nn.Linear(hidden_dim, hidden_dim),
-                # torch.nn.ReLU(),
-                # torch.nn.Linear(hidden_dim, output_dim*2)
-                # ).to(self._device_id)
             self._model[i] = WorldNet(input_dim, hidden_dim, output_dim).to(self._device_id)
             print(self._model[i])
             self._parameters += list(self._model[i].parameters())
 
         self._max_logvar = torch.full((output_dim,), 0.5, requires_grad=True, device=self._device_id, dtype=torch.float)
         self._min_logvar = torch.full((output_dim,), -10, requires_grad=True, device=self._device_id, dtype=torch.float)
-
-        # print('parameters:', parameters)
-        # print('self._max_logvar:', self._max_logvar.is_leaf)
-        # print('self._min_logvar:', self._min_logvar.is_leaf)
-        # self._optim = torch.optim.AdamW([
-            # {'params': parameters, 'weight_decay': 0.00005}, 
-            # {'params': [self._max_logvar, self._min_logvar], 'weight_decay': 0.0}
-            # ], lr=0.001) 
-
-        # self._optim = torch.optim.AdamW([
-            # {'params': self._model[0].fc_in.parameters(), 'weight_decay': 0.000025},
-            # {'params': self._model[0].fc_1.parameters(), 'weight_decay': 0.00005},
-            # {'params': self._model[0].fc_2.parameters(), 'weight_decay': 0.000075},
-            # {'params': self._model[0].fc_3.parameters(), 'weight_decay': 0.000075},
-            # {'params': self._model[0].fc_out.parameters(), 'weight_decay': 0.0001},
-            # {'params': [self._max_logvar, self._min_logvar], 'weight_decay': 0.0}
-            # ], lr=0.001)
 
         self._optim = torch.optim.Adam([
             {'params': self._model[0].fc_in.parameters()},
@@ -158,22 +146,25 @@ class WorldModel:
 
 
             # gan loss
-            sample = mean + torch.randn_like(mean) * logvar.exp().sqrt()
-            sample.retain_grad()
+            gan_loss = torch.tensor(0)
+            # sample = mean + torch.randn_like(mean) * logvar.exp().sqrt()
+            # sample.retain_grad()
             # mean_gan = mean.clone()
             # mean_gan.retain_grad()
-            logits = disc.predict(
+            # logits = disc.predict(
                     # torch.cat((inputs[i,:,:], mean_gan), dim=1),
-                    torch.cat((inputs[i,:,:], sample), dim=1),
-                    ret_logits=True)
-            batch_size = inputs.shape[1] # input dim is (ensemble_size, batch_size, obs_dim + act_dim)
-            labels = torch.ones(batch_size, device=self._device_id) # non-soft-label
-            gan_loss = F.binary_cross_entropy_with_logits(logits.flatten(), labels)
+                    # torch.cat((inputs[i,:,:], sample), dim=1),
+                    # ret_logits=True)
+            # batch_size = inputs.shape[1] # input dim is (ensemble_size, batch_size, obs_dim + act_dim)
+            # labels = torch.ones(batch_size, device=self._device_id) # non-soft-label
+            # gan_loss = F.binary_cross_entropy_with_logits(logits.flatten(), labels)
 
-            if self._num_samples >= int(10e3):
-                total_loss = train_loss + var_loss + reg_loss + 1.0 * gan_loss
-            else:
-                total_loss = train_loss + var_loss + reg_loss + 0.0 * gan_loss
+            # if self._num_samples >= int(10e3):
+                # total_loss = train_loss + var_loss + reg_loss + 1.0 * gan_loss
+            # else:
+                # total_loss = train_loss + var_loss + reg_loss + 0.0 * gan_loss
+
+            total_loss = train_loss + var_loss + reg_loss
 
             losses.append(total_loss)
             
@@ -187,7 +178,7 @@ class WorldModel:
                 info = {
                         'gan_loss': gan_loss.item(),
                         'mean_mse': mean_mse,
-                        'mean_gan': sample,
+                        # 'mean_gan': sample,
                         }
                 return torch.stack(losses), prog, info
 
@@ -302,7 +293,7 @@ class WorldModel:
                 model_metrics.update({
                     'gan_loss': info['gan_loss'],
                     'gradnorm_mse_output': torch.nn.utils.clip_grad_norm_(info['mean_mse'], 10e9),
-                    'gradnorm_gan_output': torch.nn.utils.clip_grad_norm_(info['mean_gan'], 10e9),
+                    # 'gradnorm_gan_output': torch.nn.utils.clip_grad_norm_(info['mean_gan'], 10e9),
                     'gradnorm_model_weight': torch.nn.utils.clip_grad_norm_(self._parameters, 10e9),
                     })
                 self._optim.step()

@@ -1,10 +1,11 @@
 params = {
     'type': 'MBPO',
     'universe': 'gym',
-    'domain': 'AntTruncatedObs', ## mbpo/env/ant.py
+    # 'domain': 'AntTruncatedObs', ## mbpo/env/ant.py
+    'domain': 'AntTruncatedObsNoisyAct', ## mbpo/env/ant.py
     'task': 'v2',
 
-    'log_dir': '/mnt/brain1/scratch/timchu/',
+    'log_dir': '/home/timchu/',
     'exp_name': 'defaults',
 
     'kwargs': {
