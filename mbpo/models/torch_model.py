@@ -12,10 +12,11 @@ def construct_torch_model(obs_dim=11, act_dim=3, rew_dim=1, hidden_dim=200, num_
     model = WorldModel(
             num_networks,
             num_elites,
+            # input_dim=obs_dim+act_dim+act_dim, # second act_dim is latent dim for gan
             input_dim=obs_dim+act_dim,
             output_dim=obs_dim+rew_dim,
             hidden_dim=hidden_dim,
-            obs_dim=obs_dim)
+            latent_dim=act_dim)
 
     return model
 
@@ -87,12 +88,12 @@ class WorldNet(torch.nn.Module):
 
 class WorldModel:
 
-    def __init__(self, num_networks, num_elites, input_dim, output_dim, hidden_dim, obs_dim):
+    def __init__(self, num_networks, num_elites, input_dim, output_dim, hidden_dim, latent_dim):
 
         self._device_id = 0 # hardcode
         self.num_nets = num_networks
         self.num_elites = num_elites
-        self._obs_dim = obs_dim
+        self._latent_dim = latent_dim
         self._output_dim = output_dim
         self._model = {}
         self._scaler = TensorStandardScaler(input_dim, self._device_id, 'std')
@@ -114,7 +115,8 @@ class WorldModel:
             {'params': self._model[0].fc_3.parameters()},
             {'params': self._model[0].fc_out.parameters()},
             {'params': [self._max_logvar, self._min_logvar]}
-            ], lr=0.001) 
+            ], lr=0.001)
+            # ], lr=0.0002, betas=(0.5, 0.999))
 
     def _losses(self, inputs, targets, mse_only=False, disc=None, ret_prog=False):
         """
@@ -123,6 +125,7 @@ class WorldModel:
         ret: (num_nets, )
         """
         losses = []
+        batch_size = inputs.shape[1]
         for i in range(self.num_nets):
             out = self._model[i](self._scaler.transform(inputs[i,:,:]))
             mean, logvar = out[:, :self._output_dim], out[:, self._output_dim:]
@@ -141,30 +144,27 @@ class WorldModel:
             train_loss = (((mean_mse - targets[i,:,:]) ** 2) * inv_var) + logvar
             train_loss = train_loss.mean(-1).mean(-1)
 
+            # reg loss
             var_loss = 0.01 * (self._max_logvar.sum() - self._min_logvar.sum())
             reg_loss = self._model[i].get_decays()
 
-
             # gan loss
-            gan_loss = torch.tensor(0)
-            # sample = mean + torch.randn_like(mean) * logvar.exp().sqrt()
-            # sample.retain_grad()
-            # mean_gan = mean.clone()
-            # mean_gan.retain_grad()
-            # logits = disc.predict(
-                    # torch.cat((inputs[i,:,:], mean_gan), dim=1),
-                    # torch.cat((inputs[i,:,:], sample), dim=1),
-                    # ret_logits=True)
-            # batch_size = inputs.shape[1] # input dim is (ensemble_size, batch_size, obs_dim + act_dim)
-            # labels = torch.ones(batch_size, device=self._device_id) # non-soft-label
-            # gan_loss = F.binary_cross_entropy_with_logits(logits.flatten(), labels)
+            # gan_loss = torch.tensor(0)
+            # noise = torch.randn(batch_size, self._latent_dim, device=inputs.device)
+            # pred_gan = self._model[i]((inputs[i,:,:], noise), dim = 1))
+            gan_validity = disc.validity(self._scaler.transform(inputs[i,:,:]), mean)
+            gan_loss = -torch.mean(gan_validity)
 
-            # if self._num_samples >= int(10e3):
-                # total_loss = train_loss + var_loss + reg_loss + 1.0 * gan_loss
+            # pred_gan = pred_gan.clone()
+            # pred_gan.retain_grad()
+
+            # total_loss = mse_loss + gan_loss + reg_loss
+            # if self._num_samples > 1e4:
+                # total_loss = mse_loss + gan_loss + reg_loss
             # else:
-                # total_loss = train_loss + var_loss + reg_loss + 0.0 * gan_loss
+                # total_loss = mse_loss + reg_loss
 
-            total_loss = train_loss + var_loss + reg_loss
+            total_loss = train_loss + var_loss + reg_loss + 0.1 * gan_loss
 
             losses.append(total_loss)
             
@@ -254,9 +254,9 @@ class WorldModel:
         targets, holdout_targets = torch.from_numpy(targets).to(self._device_id), torch.from_numpy(holdout_targets).to(self._device_id)
 
         print('[ BNN ] Training {} | Holdout: {}'.format(inputs.shape, holdout_inputs.shape)) #[ BNN ] Training (57139, 23) | Holdout: (7, 5000, 23)
-        # with self.sess.as_default():
-            # self.scaler.fit(inputs)
         self._scaler.fit(inputs)
+        # inputs = self._scaler.transform(inputs)
+        # holdout_inputs = self._scaler.transform(holdout_inputs)
 
         idxs = np.random.randint(inputs.shape[0], size=[self.num_nets, inputs.shape[0]])
         if hide_progress:
@@ -278,14 +278,12 @@ class WorldModel:
 
         for epoch in epoch_iter:
             for batch_num in range(int(np.ceil(idxs.shape[-1] / batch_size))):
-                # batch_idxs = idxs[:, batch_num * batch_size:(batch_num + 1) * batch_size]
                 batch_idxs = idxs[:, batch_num * batch_size:(batch_num + 1) * batch_size]
-                # self.sess.run(
-                    # self.train_op,
-                    # feed_dict={self.sy_train_in: inputs[batch_idxs], self.sy_train_targ: targets[batch_idxs]}
-                # )
 
-                disc.eval()
+                # Train Discriminator
+                disc_metrics = disc.train(inputs[batch_idxs, :], targets[batch_idxs, :], self._model[0], self._latent_dim, self._output_dim, self._scaler)
+                model_metrics.update(disc_metrics)
+
                 self._num_samples = num_samples 
                 losses, prog, info = self._losses(inputs[batch_idxs, :], targets[batch_idxs, :], disc=disc, ret_prog=True)
                 self._optim.zero_grad()
@@ -297,8 +295,6 @@ class WorldModel:
                     'gradnorm_model_weight': torch.nn.utils.clip_grad_norm_(self._parameters, 10e9),
                     })
                 self._optim.step()
-                disc.eval(False)
-
                 grad_updates += 1
 
             idxs = shuffle_rows(idxs)
@@ -414,12 +410,17 @@ class WorldModel:
                     # feed_dict={self.sy_pred_in2d: inputs}
                 # )
 
+                batch_size = inputs.shape[0]
                 x = torch.from_numpy(inputs).to(self._device_id).float()
                 means = []
                 varis = []
                 with torch.no_grad():
                     for i in range(self.num_nets):
                         x = self._scaler.transform(x)
+                        # noise = torch.randn(batch_size, self._latent_dim, device=x.device)
+                        # out = self._model[i](torch.cat((x, noise), dim = 1))
+                        # means.append(out)
+                        # varis.append(torch.zeros_like(out))
                         out = self._model[i](x)
                         means.append(out[:, :self._output_dim])
                         logvar = out[:, self._output_dim:]

@@ -61,7 +61,7 @@ class AntTruncatedObsNoisyActEnv(mujoco_env.MujocoEnv, utils.EzPickle):
 
     def step(self, a):
         xposbefore = self.get_body_com("torso")[0]
-        noise = np.random.standard_normal(a.shape) * 0.1
+        noise = np.random.standard_normal(a.shape) * 0.0
         self.do_simulation(a + noise, self.frame_skip)
         xposafter = self.get_body_com("torso")[0]
         forward_reward = (xposafter - xposbefore)/self.dt

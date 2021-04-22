@@ -30,63 +30,82 @@ class Discriminator:
 
         self._model = torch.nn.Sequential(
             torch.nn.Linear(input_dim, hidden_dim),
-            torch.nn.LeakyReLU(),
+            torch.nn.LeakyReLU(0.2),
             torch.nn.Linear(hidden_dim, hidden_dim),
-            torch.nn.LeakyReLU(),
-            torch.nn.Linear(hidden_dim, hidden_dim),
-            torch.nn.LeakyReLU(),
-            torch.nn.Linear(hidden_dim, hidden_dim),
-            torch.nn.LeakyReLU(),
+            torch.nn.LeakyReLU(0.2),
             torch.nn.Linear(hidden_dim, 1)
             ).to(self._device_id)
 
         print('Discriminator:\n', self._model)
 
-        self._optim = torch.optim.AdamW(self._model.parameters(), lr=0.001)
+        self._optim = torch.optim.Adam(self._model.parameters(), lr=0.0002, betas=(0.5, 0.999))
 
-        self._scaler = TensorStandardScaler(input_dim, self._device_id)
+        # self._scaler = TensorStandardScaler(input_dim, self._device_id)
 
-    def eval(self, mode=True):
-        if mode:
-            self._model.eval()
-        else:
-            self._model.train()
+        self._lambda_gp = 10
 
-    def train(self, inputs, targets, disc_batch_size):
 
-        holdout_ratio = 0.1 # hardcode
+    def compute_gradient_penalty(self, real_samples, fake_samples):
+        """Calculates the gradient penalty loss for WGAN GP"""
+        # Random weight term for interpolation between real and fake samples
+        alpha = torch.rand(real_samples.size(0), 1, device=self._device_id)
+        # Get random interpolation between real and fake samples
+        interpolates = (alpha * real_samples + ((1 - alpha) * fake_samples)).requires_grad_(True)
+        d_interpolates = self._model(interpolates)
+        #fake = torch.tensor(real_samples.shape[0], 1).fill_(1.0).to(device_id)
+        fake = torch.full((real_samples.shape[0], 1), 1.0).to(self._device_id)#.fill_(1.0), requires_grad=False)
+        # Get gradient w.r.t. interpolates
+        gradients = torch.autograd.grad(
+            outputs=d_interpolates,
+            inputs=interpolates,
+            grad_outputs=fake,
+            create_graph=True,
+            retain_graph=True,
+            only_inputs=True,
+        )[0]
+        gradients = gradients.view(gradients.size(0), -1)
+        gradient_penalty = ((gradients.norm(2, dim=1) - 1) ** 2).mean()
+        return gradient_penalty
 
-        # Split into training and holdout sets
-        num_holdout = int(inputs.shape[0] * holdout_ratio)
-        permutation = np.random.permutation(inputs.shape[0])
-        inputs, holdout_inputs = inputs[permutation[num_holdout:]], inputs[permutation[:num_holdout]] # (57139, 23)
-        targets, holdout_targets = targets[permutation[num_holdout:]], targets[permutation[:num_holdout]] # (5000, 23)
+    def train(self, inputs, targets, generator, latent_dim, output_dim, scaler):
+        """
+        @param inputs: (num_nets, batch_size, input_dim)
+        @param targets: (num_nets, batch_size, output_dim)
+        """
 
-        inputs, holdout_inputs = torch.from_numpy(inputs).to(self._device_id), torch.from_numpy(holdout_inputs).to(self._device_id)
-        targets, holdout_targets = torch.from_numpy(targets).to(self._device_id), torch.from_numpy(holdout_targets).to(self._device_id)
+        # ignore dimension of num_nets since we don't do ensemble
+        inputs = scaler.transform(inputs[0, :, :])
+        targets = targets[0, :, :]
 
-        self._scaler.fit(inputs)
-        idxs = np.random.randint(inputs.shape[0], size=inputs.shape[0])
-        progress = Progress(int(np.floor(idxs.shape[-1] / disc_batch_size))) # switch from ceil to floor to avoid 1 batch size into batchnorm layer
-        for batch_num in range(int(np.floor(idxs.shape[-1] / disc_batch_size))):
-            batch_idxs = idxs[batch_num * disc_batch_size:(batch_num + 1) * disc_batch_size]
+        # batch_size = inputs.shape[0]
+        # noise = torch.randn((batch_size, latent_dim), device=self._device_id)
+        # fake_targets = generator(torch.cat((inputs, noise), dim = 1))
+        out = generator(inputs)
+        mean, logvar = out[:, :output_dim], out[:, output_dim:]
+        # fake_targets = mean + torch.randn_like(mean) * logvar.exp().sqrt()
+        fake_targets = mean
+        fake_batch = torch.cat((inputs, fake_targets), dim = 1)
+        real_batch = torch.cat((inputs, targets), dim = 1)
+        
+        # Real images
+        real_validity = self._model(real_batch)
+        # Fake images
+        fake_validity = self._model(fake_batch)
+        
+        gradient_penalty = self.compute_gradient_penalty(real_batch.data, fake_batch.data)
+        disc_loss = -torch.mean(real_validity) + torch.mean(fake_validity) + self._lambda_gp * gradient_penalty
 
-            logits = self._model(self._scaler.transform(inputs[batch_idxs, :])).flatten()
-            loss = F.binary_cross_entropy_with_logits(logits, targets[batch_idxs].flatten())
-
-            self._optim.zero_grad()
-            loss.backward()
-            self._optim.step()
-
-            progress.set_description([['disc_loss', loss]])
-            progress.update()
+        self._optim.zero_grad()
+        disc_loss.backward()
+        self._optim.step()
             
-        with torch.no_grad():
-            logits = self._model(self._scaler.transform(holdout_inputs)).flatten()
-            val_loss = F.binary_cross_entropy_with_logits(logits, holdout_targets.flatten())
-
-        disc_metrics = {'disc_val_loss': val_loss.item(), 'disc_loss': loss.item()}
+        disc_metrics = {'disc_loss': disc_loss.item()}
         return OrderedDict(disc_metrics)
+
+    def validity(self, inputs, targets):
+        batch = torch.cat((inputs, targets), dim = 1) 
+        validity = self._model(batch)
+        return validity
 
     def predict(self, inputs, ret_logits=False):
         """
