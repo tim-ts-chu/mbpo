@@ -207,6 +207,7 @@ class MBPO(RLAlgorithm):
 
             self._training_progress = Progress(self._epoch_length * self._n_train_repeat)
             start_samples = self.sampler._total_samples
+            # self._model.scheduler_step() # model's learning rate scheduler step for per 1k sample steps
             for i in count():
                 samples_now = self.sampler._total_samples
                 self._timestep = samples_now - start_samples
@@ -253,7 +254,7 @@ class MBPO(RLAlgorithm):
                 self._timestep_after_hook()
                 gt.stamp('timestep_after_hook')
 
-            # self._visualize_model(self._evaluation_environment, self._total_timestep)
+            self._visualize_model(self._evaluation_environment, self._total_timestep)
 
             training_paths = self.sampler.get_last_n_paths(
                 math.ceil(self._epoch_length / self.sampler._max_path_length))
@@ -460,7 +461,7 @@ class MBPO(RLAlgorithm):
 
         print('[ Visualization ] Starting | Epoch {} | Timestep {} | Log dir: {}\n'.format(self._epoch, timestep, self._log_dir))
         visualize_policy(env, self.fake_env, self._policy, self._disc, self._writer, timestep)
-        # visualize_model_perf(env, self.fake_env, self._policy, self._writer, timestep)
+        visualize_model_perf(env, self.fake_env, self._policy, self._writer, timestep)
         print('[ Visualization ] Done')
         ## set env state
         env.unwrapped.set_state(qpos, qvel)

@@ -74,13 +74,12 @@ class Discriminator:
         """
 
         # ignore dimension of num_nets since we don't do ensemble
-        inputs = scaler.transform(inputs[0, :, :])
+        inputs = inputs[0, :, :]
         targets = targets[0, :, :]
 
-        # batch_size = inputs.shape[0]
-        # noise = torch.randn((batch_size, latent_dim), device=self._device_id)
-        # fake_targets = generator(torch.cat((inputs, noise), dim = 1))
-        out = generator(inputs)
+        batch_size = inputs.shape[0]
+        noise = torch.randn((batch_size, latent_dim), device=self._device_id)
+        out = generator(torch.cat((inputs, noise), dim = 1))
         mean, logvar = out[:, :output_dim], out[:, output_dim:]
         # fake_targets = mean + torch.randn_like(mean) * logvar.exp().sqrt()
         fake_targets = mean

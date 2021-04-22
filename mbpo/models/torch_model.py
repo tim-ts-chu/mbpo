@@ -12,8 +12,8 @@ def construct_torch_model(obs_dim=11, act_dim=3, rew_dim=1, hidden_dim=200, num_
     model = WorldModel(
             num_networks,
             num_elites,
-            # input_dim=obs_dim+act_dim+act_dim, # second act_dim is latent dim for gan
-            input_dim=obs_dim+act_dim,
+            input_dim=obs_dim+act_dim+act_dim, # second act_dim is latent dim for gan
+            # input_dim=obs_dim+act_dim,
             output_dim=obs_dim+rew_dim,
             hidden_dim=hidden_dim,
             latent_dim=act_dim)
@@ -118,6 +118,8 @@ class WorldModel:
             ], lr=0.001)
             # ], lr=0.0002, betas=(0.5, 0.999))
 
+        self._scheduler = torch.optim.lr_scheduler.MultiStepLR(self._optim, milestones=[10, 50], gamma=0.5)
+
     def _losses(self, inputs, targets, mse_only=False, disc=None, ret_prog=False):
         """
         inputs: (num_nets, batch_size, state_dim + act_dim)
@@ -127,7 +129,9 @@ class WorldModel:
         losses = []
         batch_size = inputs.shape[1]
         for i in range(self.num_nets):
-            out = self._model[i](self._scaler.transform(inputs[i,:,:]))
+            noise = torch.randn(batch_size, self._latent_dim, device=inputs.device)
+            model_input = torch.cat((inputs[i,:,:], noise), dim = 1)
+            out = self._model[i](model_input)
             mean, logvar = out[:, :self._output_dim], out[:, self._output_dim:]
 
             logvar = self._max_logvar - F.softplus(self._max_logvar - logvar)
@@ -149,20 +153,10 @@ class WorldModel:
             reg_loss = self._model[i].get_decays()
 
             # gan loss
-            # gan_loss = torch.tensor(0)
-            # noise = torch.randn(batch_size, self._latent_dim, device=inputs.device)
-            # pred_gan = self._model[i]((inputs[i,:,:], noise), dim = 1))
-            gan_validity = disc.validity(self._scaler.transform(inputs[i,:,:]), mean)
+            mean_gan = mean.clone()
+            mean_gan.retain_grad()
+            gan_validity = disc.validity(inputs[i,:,:], mean_gan)
             gan_loss = -torch.mean(gan_validity)
-
-            # pred_gan = pred_gan.clone()
-            # pred_gan.retain_grad()
-
-            # total_loss = mse_loss + gan_loss + reg_loss
-            # if self._num_samples > 1e4:
-                # total_loss = mse_loss + gan_loss + reg_loss
-            # else:
-                # total_loss = mse_loss + reg_loss
 
             total_loss = train_loss + var_loss + reg_loss + 0.1 * gan_loss
 
@@ -178,7 +172,7 @@ class WorldModel:
                 info = {
                         'gan_loss': gan_loss.item(),
                         'mean_mse': mean_mse,
-                        # 'mean_gan': sample,
+                        'mean_gan': mean_gan,
                         }
                 return torch.stack(losses), prog, info
 
@@ -219,6 +213,9 @@ class WorldModel:
         else:
             return False
 
+    def scheduler_step(self):
+        self._scheduler.step()
+
     def train(self, inputs, targets, disc,
               batch_size=32, max_epochs=None, max_epochs_since_update=5,
               hide_progress=False, holdout_ratio=0.0, max_logging=5000, max_grad_updates=None, timer=None, max_t=None, num_samples=None):
@@ -255,8 +252,8 @@ class WorldModel:
 
         print('[ BNN ] Training {} | Holdout: {}'.format(inputs.shape, holdout_inputs.shape)) #[ BNN ] Training (57139, 23) | Holdout: (7, 5000, 23)
         self._scaler.fit(inputs)
-        # inputs = self._scaler.transform(inputs)
-        # holdout_inputs = self._scaler.transform(holdout_inputs)
+        inputs = self._scaler.transform(inputs)
+        holdout_inputs = self._scaler.transform(holdout_inputs)
 
         idxs = np.random.randint(inputs.shape[0], size=[self.num_nets, inputs.shape[0]])
         if hide_progress:
@@ -291,7 +288,7 @@ class WorldModel:
                 model_metrics.update({
                     'gan_loss': info['gan_loss'],
                     'gradnorm_mse_output': torch.nn.utils.clip_grad_norm_(info['mean_mse'], 10e9),
-                    # 'gradnorm_gan_output': torch.nn.utils.clip_grad_norm_(info['mean_gan'], 10e9),
+                    'gradnorm_gan_output': torch.nn.utils.clip_grad_norm_(info['mean_gan'], 10e9),
                     'gradnorm_model_weight': torch.nn.utils.clip_grad_norm_(self._parameters, 10e9),
                     })
                 self._optim.step()
@@ -417,11 +414,8 @@ class WorldModel:
                 with torch.no_grad():
                     for i in range(self.num_nets):
                         x = self._scaler.transform(x)
-                        # noise = torch.randn(batch_size, self._latent_dim, device=x.device)
-                        # out = self._model[i](torch.cat((x, noise), dim = 1))
-                        # means.append(out)
-                        # varis.append(torch.zeros_like(out))
-                        out = self._model[i](x)
+                        noise = torch.randn(batch_size, self._latent_dim, device=x.device)
+                        out = self._model[i](torch.cat((x, noise), dim = 1))
                         means.append(out[:, :self._output_dim])
                         logvar = out[:, self._output_dim:]
                         logvar = self._max_logvar - F.softplus(self._max_logvar - logvar)

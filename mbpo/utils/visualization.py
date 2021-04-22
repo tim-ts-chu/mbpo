@@ -106,8 +106,6 @@ def visualize_policy(real_env, fake_env, policy, disc, writer, timestep, max_ste
     conf_r = []
     conf_f = []
 
-    disc.eval()
-
     i = 0
     term_r, term_f = False, False
     while not (term_r and term_f) and i <= max_steps:
@@ -120,9 +118,9 @@ def visualize_policy(real_env, fake_env, policy, disc, writer, timestep, max_ste
             terminals_r.append(term_r)
 
             # add discriminator score
-            score = disc.predict(np.concatenate([obs_r, act, [rew_r], next_obs_r - obs_r]).reshape(1, -1))
-            conf_r.append(score)
-            obs_r = next_obs_r
+            # score = disc.predict(np.concatenate([obs_r, act, [rew_r], next_obs_r - obs_r]).reshape(1, -1))
+            # conf_r.append(score)
+            # obs_r = next_obs_r
 
         if not term_f:
             next_obs_f, rew_f, term_f, info_f = fake_env.step(obs, act)
@@ -133,9 +131,9 @@ def visualize_policy(real_env, fake_env, policy, disc, writer, timestep, max_ste
             stds_f.append(info_f['std'])
 
             # add discriminator score
-            score = disc.predict(np.concatenate([obs_f, act, rew_f, next_obs_f - obs_f]).reshape(1, -1))
-            conf_f.append(score)
-            obs_f = next_obs_f
+            # score = disc.predict(np.concatenate([obs_f, act, rew_f, next_obs_f - obs_f]).reshape(1, -1))
+            # conf_f.append(score)
+            # obs_f = next_obs_f
 
         actions.append(act)
 
@@ -155,7 +153,6 @@ def visualize_policy(real_env, fake_env, policy, disc, writer, timestep, max_ste
     rewards_observations_f = np.concatenate((rewards_f, terminals_f, np.array(observations_f)), -1)
     plot_trajectories(writer, label, timestep, rewards_observations_r, rewards_observations_f, means_f, stds_f, conf_r, conf_f)
     #record_trajectories(writer, label, epoch, images_r)
-    disc.eval(False)
 
 def visualize_model_perf(real_env, fake_env, policy, writer, timestep, max_steps=1000, focus=None, label='model_perf', img_dim=128):
     init_obs = real_env.reset()
