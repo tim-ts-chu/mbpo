@@ -12,8 +12,8 @@ def construct_torch_model(obs_dim=11, act_dim=3, rew_dim=1, hidden_dim=200, num_
     model = WorldModel(
             num_networks,
             num_elites,
-            # input_dim=obs_dim+act_dim+act_dim, # second act_dim is latent dim for gan
-            input_dim=obs_dim+act_dim,
+            input_dim=obs_dim+act_dim+act_dim, # second act_dim is latent dim for gan
+            # input_dim=obs_dim+act_dim,
             output_dim=obs_dim+rew_dim,
             hidden_dim=hidden_dim,
             latent_dim=act_dim)
@@ -129,9 +129,9 @@ class WorldModel:
         losses = []
         batch_size = inputs.shape[1]
         for i in range(self.num_nets):
-            # noise = torch.randn(batch_size, self._latent_dim, device=inputs.device)
-            # model_input = torch.cat((inputs[i,:,:], noise), dim = 1)
-            model_input = inputs[i,:,:]
+            noise = torch.randn(batch_size, self._latent_dim, device=inputs.device)
+            model_input = torch.cat((inputs[i,:,:], noise), dim = 1)
+            # model_input = inputs[i,:,:]
             out = self._model[i](model_input)
             mean, logvar = out[:, :self._output_dim], out[:, self._output_dim:]
 
@@ -156,9 +156,9 @@ class WorldModel:
             # gan loss
             mean_gan = mean.clone()
             mean_gan.retain_grad()
-            # gan_validity = disc.validity(inputs[i,:,:], mean_gan)
-            # gan_loss = -torch.mean(gan_validity)
-            gan_loss = torch.tensor(0)
+            gan_validity = disc.validity(inputs[i,:,:], mean_gan)
+            gan_loss = -torch.mean(gan_validity)
+            # gan_loss = torch.tensor(0)
 
             total_loss = train_loss + var_loss + reg_loss + 0.1 * gan_loss
 
@@ -280,8 +280,8 @@ class WorldModel:
                 batch_idxs = idxs[:, batch_num * batch_size:(batch_num + 1) * batch_size]
 
                 # Train Discriminator
-                # disc_metrics = disc.train(inputs[batch_idxs, :], targets[batch_idxs, :], self._model[0], self._latent_dim, self._output_dim, self._scaler)
-                # model_metrics.update(disc_metrics)
+                disc_metrics = disc.train(inputs[batch_idxs, :], targets[batch_idxs, :], self._model[0], self._latent_dim, self._output_dim, self._scaler)
+                model_metrics.update(disc_metrics)
 
                 self._num_samples = num_samples 
                 losses, prog, info = self._losses(inputs[batch_idxs, :], targets[batch_idxs, :], disc=disc, ret_prog=True)
@@ -416,9 +416,9 @@ class WorldModel:
                 with torch.no_grad():
                     for i in range(self.num_nets):
                         x = self._scaler.transform(x)
-                        # noise = torch.randn(batch_size, self._latent_dim, device=x.device)
-                        # out = self._model[i](torch.cat((x, noise), dim = 1))
-                        out = self._model[i](x)
+                        noise = torch.randn(batch_size, self._latent_dim, device=x.device)
+                        out = self._model[i](torch.cat((x, noise), dim = 1))
+                        # out = self._model[i](x)
                         means.append(out[:, :self._output_dim])
                         logvar = out[:, self._output_dim:]
                         logvar = self._max_logvar - F.softplus(self._max_logvar - logvar)

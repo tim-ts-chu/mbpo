@@ -226,11 +226,6 @@ class MBPO(RLAlgorithm):
                         self._epoch, self._model_train_freq, self._timestep, self._total_timestep, self._train_steps_this_epoch, self._num_train_steps)
                     )
 
-                    # train disc
-                    # if start_samples >= int(10e3):
-                        # disc_train_metrics = self._train_disc(disc_batch_size=256)
-                        # model_metrics.update(disc_train_metrics)
-
                     model_train_metrics = self._train_model(batch_size=256, max_epochs=None, holdout_ratio=0.2, max_t=self._max_model_t, num_samples=start_samples)
                     model_metrics.update(model_train_metrics)
                     gt.stamp('epoch_train_model')

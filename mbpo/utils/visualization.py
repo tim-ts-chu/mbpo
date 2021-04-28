@@ -210,9 +210,9 @@ def calculate_rollout_errors(traj_len, rew_obs_r, rew_obs_f, writer, timestep):
 
     mse = np.mean((rew_obs_r - rew_obs_f) ** 2, axis=0) # (num_steps, )
 
-    mse_err_10 = []
-    mse_err_20 = []
-    mse_err_30 = []
+    mse_err_1 = []
+    mse_err_3 = []
+    mse_err_5 = []
     culmulative_err = 0
     for step in range(num_steps):
         traj_len_count = traj_len[step]
@@ -222,24 +222,24 @@ def calculate_rollout_errors(traj_len, rew_obs_r, rew_obs_f, writer, timestep):
         else:
             culmulative_err += mse[step]
 
-        if traj_len_count == 10:
-            mse_err_10.append(culmulative_err)
-        elif traj_len_count == 20:
-            mse_err_20.append(culmulative_err)
-        elif traj_len_count == 30:
-            mse_err_30.append(culmulative_err)
+        if traj_len_count == 1:
+            mse_err_1.append(culmulative_err)
+        elif traj_len_count == 3:
+            mse_err_3.append(culmulative_err)
+        elif traj_len_count == 5:
+            mse_err_5.append(culmulative_err)
 
-    if mse_err_10:
-        mse_err_10 = np.asarray(mse_err_10)
-        writer.add_scalar('ray/tune/model/cum_mse-10-mean', mse_err_10.mean(), timestep)
-        writer.add_scalar('ray/tune/model/cum_mse-10-std', mse_err_10.std(), timestep)
-    if mse_err_20:
-        mse_err_20 = np.asarray(mse_err_20)
-        writer.add_scalar('ray/tune/model/cum_mse-20-mean', mse_err_20.mean(), timestep)
-        writer.add_scalar('ray/tune/model/cum_mse-20-std', mse_err_20.std(), timestep)
-    if mse_err_30:
-        mse_err_30 = np.asarray(mse_err_30)
-        writer.add_scalar('ray/tune/model/cum_mse-30-mean', mse_err_30.mean(), timestep)
-        writer.add_scalar('ray/tune/model/cum_mse-30-std', mse_err_30.std(), timestep)
+    if mse_err_1:
+        mse_err_1 = np.asarray(mse_err_1)
+        writer.add_scalar('ray/tune/model/cum_mse-1-mean', mse_err_1.mean(), timestep)
+        writer.add_scalar('ray/tune/model/cum_mse-1-std', mse_err_1.std(), timestep)
+    if mse_err_3:
+        mse_err_3 = np.asarray(mse_err_3)
+        writer.add_scalar('ray/tune/model/cum_mse-3-mean', mse_err_3.mean(), timestep)
+        writer.add_scalar('ray/tune/model/cum_mse-3-std', mse_err_3.std(), timestep)
+    if mse_err_5:
+        mse_err_5 = np.asarray(mse_err_5)
+        writer.add_scalar('ray/tune/model/cum_mse-5-mean', mse_err_5.mean(), timestep)
+        writer.add_scalar('ray/tune/model/cum_mse-5-std', mse_err_5.std(), timestep)
 
 
