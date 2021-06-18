@@ -4,13 +4,14 @@ params = {
     'domain': 'Hopper',
     'task': 'v2',
 
-    'log_dir': '~/ray_mbpo/',
+    'log_dir': '/home/timchu/data/',
     'exp_name': 'defaults',
 
     'kwargs': {
         'epoch_length': 1000,
         'train_every_n_steps': 1,
-        'n_train_repeat': 20,
+        # 'n_train_repeat': 20,
+        'n_train_repeat': 40,
         'eval_render_mode': None,
         'eval_n_episodes': 1,
         'eval_deterministic': True,
@@ -23,8 +24,8 @@ params = {
         'model_retain_epochs': 1,
         'rollout_batch_size': 100e3,
         'deterministic': False,
-        'num_networks': 7,
-        'num_elites': 5,
+        'num_networks': 1,
+        'num_elites': 1,
         'real_ratio': 0.05,
         'target_entropy': -1,
         'max_model_t': None,

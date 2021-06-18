@@ -4,13 +4,14 @@ params = {
     'domain': 'HumanoidTruncatedObs', ## mbpo/env/humanoid.py
     'task': 'v2',
 
-    'log_dir': '/mnt/brain1/scratch/timchu/',
+    'log_dir': '/home/timchu/data/',
     'exp_name': 'defaults',
 
     'kwargs': {
         'epoch_length': 1000,
         'train_every_n_steps': 1,
-        'n_train_repeat': 20,
+        'n_train_repeat': 40,
+        # 'n_train_repeat': 1,
         'eval_render_mode': None,
         'eval_n_episodes': 1,
         'eval_deterministic': True,
